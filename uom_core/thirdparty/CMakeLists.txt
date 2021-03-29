@@ -1,1 +1,5 @@
-add_subdirectory(ros)
+set(BUILD_TESTS OFF CACHE BOOL "Enable BUILD_TESTS")
+set(BUILD_EXAMPLES OFF CACHE BOOL "Enable BUILD_EXAMPLES")
+
+add_subdirectory(ros EXCLUDE_FROM_ALL)
+add_subdirectory(Sophus EXCLUDE_FROM_ALL)

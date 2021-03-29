@@ -61,7 +61,8 @@ target_link_libraries(uom
   ${GFLAGS_LIBRARIES}
   ${GLOG_LIBRARIES}
   ${OpenCV_LIBS}
-  ${YAML_CPP_LIBRARIES})
+  ${YAML_CPP_LIBRARIES}
+  sophus)
 
 
 add_executable(simple_simulator_node

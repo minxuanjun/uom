@@ -3,7 +3,7 @@
 #include "uom/imu/state.hpp"
 #include "uom/utils/hash_utils.hpp"
 #include "uom/sim/sim_params.hpp"
-#include "uom/common_types.hpp"
+#include "uom/utils/common_types.hpp"
 
 #include <string>
 #include <vector>

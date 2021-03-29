@@ -8,7 +8,7 @@
 
 // For hashing pcl::PointXYZI
 #include "uom/utils/hash_utils.hpp"
-#include "uom/common_types.hpp"
+#include "uom/utils/common_types.hpp"
 #include "uom/laser/laser_params.hpp"
 #include "uom/laser/laser_preprocessor_params.hpp"
 
@@ -38,9 +38,6 @@ struct PointInfo
     int pt_type = PT_NORMAL;
 
     int ft_type = FT_UNLABELED;
-
-    /// Timestamp of point (second)
-    double timestamp = 0.0;
 
     /// Index of point in original cloud
     size_t index = 0;
@@ -92,7 +89,7 @@ public:
 
     void process(const PointCloud& in_cloud,
                  const std::vector<sensor_msgs::ImuConstPtr>* imu_data_vec,
-                 PointCloud& out_full, PointCloud& out_corn, PointCloud& out_surf, PointCloud& undistort_points);
+                 PointCloud& out_full, PointCloud& out_corn, PointCloud& out_surf);
 
 
     cv::Mat get_debug_image();
@@ -107,10 +104,10 @@ protected:
     Quaterniond process_imu(const std::vector<sensor_msgs::ImuConstPtr>& imu_data_vec);
 
 
-    void compute_rejection(const CloudFeatureExtractor::PointCloud& in_cloud);
+    void compute_rejection();
 
 
-    void compute_features(const PointCloud& in_cloud, PointCloud& pc_corners, PointCloud& pc_surface);
+    void compute_features(PointCloud& pc_corners, PointCloud& pc_surface);
 
 
     /// \brief Update properties of a point and its neighborhood.
@@ -134,9 +131,6 @@ protected:
 
     /// For calibration params
     LaserParams laser_params_;
-
-    /// Current timestamp of input cloud. For Livox. It is the time of the first point in the packet.
-    double current_time_cloud_ = 0;
 
     /// Same size as input cloud. Contains all temporal result of every point
     std::vector<PointInfo> point_info_;

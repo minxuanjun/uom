@@ -4,7 +4,7 @@
 #include <ostream>
 #include <opencv2/opencv.hpp>
 
-#include "uom/common_types.hpp"
+#include "uom/utils/common_types.hpp"
 #include "uom/utils/params_base.hpp"
 
 

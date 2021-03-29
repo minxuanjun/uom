@@ -3,7 +3,7 @@
 #include <cstring>
 #include <ostream>
 
-#include "uom/common_types.hpp"
+#include "uom/utils/common_types.hpp"
 #include "uom/utils/params_base.hpp"
 
 
