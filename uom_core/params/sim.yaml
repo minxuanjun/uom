@@ -1,0 +1,35 @@
+# Camera
+cam0:
+  T_cam_imu:
+    rows: 4
+    cols: 4
+    data: [
+        0.010758037416617322, -0.9999416948013977, -0.0009336105454654797, 0.022596609533713067,
+        0.007335435464490114, 0.001012558875006564, -0.9999725826796806, 0.00030943483718352615,
+        0.9999152244152943, 0.010750894020154222, 0.007345900916732345, -0.030918197127684642,
+        0.0, 0.0, 0.0, 1.0 ]
+  cam_overlaps: [ 1 ]
+  camera_model: pinhole
+  distortion_coeffs: [ -0.035822727501021175, -0.00101316114629834, 0.0001646282053855267,
+                       0.0005688582650491764 ]
+  distortion_model: radtan
+  intrinsics: [ 526.8280128932327, 527.6585845143885, 642.6834104944608, 369.0804759005744 ]
+  resolution: [ 1280, 720 ]
+  rostopic: /left_raw
+  timeshift_cam_imu: 0.0013249670136581252
+
+# IMU
+accelerometer_noise_density: 0.0015999999595806003
+accelerometer_random_walk:   0.0002508999896235764
+gyroscope_noise_density:     0.007000000216066837
+gyroscope_random_walk:       0.0019474000437185168
+update_rate:                 400
+linearized_ba:               [0.00, 0.00, 0.00]
+linearized_bg:               [0.00, 0.00, 0.00]
+n_gravity:                   [0, 0, -9.81]
+integration_cov:             0.0001
+
+# other
+camera_pixel_noise: 1.0
+cam_rate: 30
+duration: 20

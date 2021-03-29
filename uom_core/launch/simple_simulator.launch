@@ -1,0 +1,12 @@
+<launch>
+
+    <node pkg="uom_core" type="simple_simulator_node" name="simple_simulator_node" required="true">
+        <param name="sim_data" value="$(find uom_core)/example/sim_model/house.txt"/>
+        <param name="sim_params" value="$(find uom_core)/params/sim.yaml"/>
+        <param name="sim_output" value="$(find uom_core)/output"/>
+        <param name="integral_method" value="0"/>
+    </node>
+
+    <node pkg="rviz" type="rviz" name="simple_simulator_rviz" args="-d $(find uom_core)/rviz/simple_simulator.rviz"/>
+
+</launch>

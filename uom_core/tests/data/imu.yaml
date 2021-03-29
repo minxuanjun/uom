@@ -1,0 +1,9 @@
+accelerometer_noise_density: 0.0015999999595806003  # Noise density (continuous-time)
+accelerometer_random_walk:   0.0002508999896235764  # Bias random walk
+gyroscope_noise_density:     0.007000000216066837   # Noise density (continuous-time)
+gyroscope_random_walk:       0.0019474000437185168  # Bias random walk
+update_rate:                 400                    # Hz (for discretization of the values above)
+linearized_ba:               [0.01, 0.02, 0.03]
+linearized_bg:               [0.03, 0.02, 0.01]
+n_gravity:                   [0, 0, -9.81]
+integration_cov:             0.0001

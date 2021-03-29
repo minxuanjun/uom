@@ -1,0 +1,23 @@
+time_interval_pts: 1.0e-5 # 10us
+min_allow_dist: 1.0
+min_sigma: 7e-4
+min_incident_angle: 5.0
+max_circle_edge_reject: 17
+curvature_ssd_size: 3
+threshold_surf_curvature: 0.001
+threshold_corn_curvature: 0.1
+threshold_corn_reflectivity: 120000
+
+
+laser0:
+  T_imu_laser:
+    rows: 4
+    cols: 4
+    data: [
+        0.995,  -0.02409,  -0.09714,  -0.02069,
+        0.02258, 0.9996,  -0.01663,   0.07833,
+        0.0975,   0.01435,    0.9951, -0.005892,
+        0,         0,         0,         1]
+  laser_model: mid40
+  rostopic: /livox/lidar
+  timeshift_laser_imu: 0

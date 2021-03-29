@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>uom</name>
+  <version>0.0.1</version>
+  <description>The uom package</description>
+  <maintainer email="tanzby@outlook.com">tanzby</maintainer>
+
+  <license>MIT</license>
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <export>
+    <metapackage/>
+  </export>
+</package>
