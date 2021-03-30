@@ -119,9 +119,9 @@ void PreIntegration::mid_point_integration(
         Vector3d a_0_x = acc0 - linearized_ba;
         Vector3d a_1_x = acc1 - linearized_ba;
 
-        Matrix3d R_w_x = hat(w_x);
-        Matrix3d R_a_0_x = hat(a_0_x);
-        Matrix3d R_a_1_x = hat(a_1_x);
+        Matrix3d R_w_x = SO3d::hat(w_x);
+        Matrix3d R_a_0_x = SO3d::hat(a_0_x);
+        Matrix3d R_a_1_x = SO3d::hat(a_1_x);
 
         Matrix3d delta_R = delta_q.toRotationMatrix();
         Matrix3d result_delta_R = result_delta_q.toRotationMatrix();

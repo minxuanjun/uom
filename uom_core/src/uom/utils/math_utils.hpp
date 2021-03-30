@@ -62,18 +62,6 @@ inline void solve_eigen(const std::vector<Eigen::Matrix<T, DIM, 1>>& pts,
 }
 
 
-// Hat (skew) operator
-template <typename T>
-inline Eigen::Matrix<T, 3, 3> hat(const Eigen::Matrix<T, 3, 1>& vec)
-{
-    Eigen::Matrix<T, 3, 3> mat;
-    mat << 0, -vec(2), vec(1),
-        vec(2), 0, -vec(0),
-        -vec(1), vec(0), 0;
-    return mat;
-}
-
-
 // Get quaternion from rotation vector
 template <typename Derived>
 Eigen::Quaternion<typename Derived::Scalar> delta_Q(const Eigen::MatrixBase<Derived>& theta)
@@ -89,3 +77,20 @@ Eigen::Quaternion<typename Derived::Scalar> delta_Q(const Eigen::MatrixBase<Deri
     dq.z() = half_theta.z();
     return dq;
 }
+
+
+/// Basic Interpolation
+template <typename TimeType, typename InterpolateType>
+struct LinearInterpolation
+{
+    void operator()(const TimeType& t1, const InterpolateType& x1,
+                    const TimeType& t2, const InterpolateType& x2,
+                    const TimeType& t_interpolated, InterpolateType& x_interpolated)
+    {
+        CHECK_LT(t1, t2);
+
+        const double theta = (t_interpolated - t1) / static_cast<double>(t2 - t1);
+
+        x_interpolated = t1 + theta * (t2 - t1);
+    }
+};

@@ -4,6 +4,13 @@
 #include <Eigen/Eigen>
 #include <sophus/se3.hpp>
 
+/// Timestamp related
+using Timestamp = int64_t;
+static constexpr double ns_to_ms = 1e-6;  // Nanosecond to millisecond conversion
+static constexpr double ms_to_ns = 1e6;   // millisecond to Nanosecond conversion
+static constexpr double ns_to_s  = 1e-9;  // Nanosecond to second conversion
+static constexpr double s_to_ns  = 1e9;   // Second to nanosecond conversion
+
 using Eigen::Vector2f;
 using Eigen::Vector3f;
 
