@@ -23,6 +23,21 @@ enum class TemporalBufferQueryResult : int
 };
 
 
+/// For print
+inline std::ostream& operator <<(std::ostream& os, const TemporalBufferQueryResult& model)
+{
+    switch (model)
+    {
+        case TemporalBufferQueryResult::AVAILABLE:             os << "AVAILABLE";           break;
+        case TemporalBufferQueryResult::NOT_YAT_AVALIABLE:     os << "NOT_YAT_AVALIABLE";   break;
+        case TemporalBufferQueryResult::NERVER_AVAILABLE:      os << "NERVER_AVAILABLE";    break;
+        case TemporalBufferQueryResult::SHUTDOWN:              os << "SHUTDOWN";            break;
+        case TemporalBufferQueryResult::TOO_FEW_MEASUREMENT:   os << "TOO_FEW_MEASUREMENT"; break;
+    }
+    return os;
+}
+
+
 template <typename ValueType, typename AllocatorType = std::allocator<std::pair<const Timestamp, ValueType>>>
 class TemporalBuffer
 {
@@ -365,12 +380,12 @@ public:
     inline TemporalBufferQueryResult
     get_value_between(const Timestamp& lower,
                       const Timestamp& higher,
-                      std::vector<ValueType, Alloc>& value_container,
-                      std::vector<Timestamp>& stamp_container,
+                      std::vector<ValueType, Alloc>* value_container,
+                      std::vector<Timestamp>* stamp_container,
                       bool include_lower = false)
     {
-        value_container.clear();
-        stamp_container.clear();
+        CHECK_NOTNULL(value_container)->clear();
+        if(stamp_container) stamp_container->clear();
 
         if (auto result = is_data_available(lower, higher); result != TemporalBufferQueryResult::AVAILABLE)
         {
@@ -389,11 +404,11 @@ public:
                 continue;
             }
 
-            value_container.emplace_back(it->second);
-            stamp_container.emplace_back(it->first);
+            value_container->emplace_back(it->second);
+            if(stamp_container) stamp_container->emplace_back(it->first);
         }
 
-        return value_container.empty() ?
+        return value_container->empty() ?
                TemporalBufferQueryResult::TOO_FEW_MEASUREMENT : TemporalBufferQueryResult::AVAILABLE;
     }
 
@@ -412,13 +427,13 @@ public:
     inline TemporalBufferQueryResult
     get_value_btw_with_interp(const Timestamp& lower,
                               const Timestamp& higher,
-                              std::vector<ValueType, Alloc>& value_container,
-                              std::vector<Timestamp>& stamp_container,
+                              std::vector<ValueType, Alloc>* value_container,
+                              std::vector<Timestamp>* stamp_container,
                               bool with_left_border_interpolated = false,
                               bool with_right_border_interpolated = false)
     {
-        value_container.clear();
-        stamp_container.clear();
+        CHECK_NOTNULL(value_container)->clear();
+        if(stamp_container) stamp_container->clear();
 
         if (auto result = is_data_available(lower, higher); result != TemporalBufferQueryResult::AVAILABLE)
         {
@@ -434,8 +449,8 @@ public:
         {
             if (it->first == lower)
             {
-                value_container.emplace_back(it->second);
-                stamp_container.emplace_back(lower);
+                value_container->emplace_back(it->second);
+                if(stamp_container) stamp_container->emplace_back(lower);
             }
             else
             {
@@ -447,8 +462,8 @@ public:
                 ValueType interpolation_value;
                 interp_value(it_prev, it, lower, interpolation_value);
 
-                value_container.emplace_back(interpolation_value);
-                stamp_container.emplace_back(lower);
+                value_container->emplace_back(interpolation_value);
+                if(stamp_container)stamp_container->emplace_back(lower);
             }
         }
 
@@ -461,8 +476,8 @@ public:
                 continue;
             }
 
-            value_container.emplace_back(it->second);
-            stamp_container.emplace_back(it->first);
+            value_container->emplace_back(it->second);
+            if(stamp_container) stamp_container->emplace_back(it->first);
         }
 
         // Interpolation for `to` side bound. it->timestamp must larger or equal to `higher`
@@ -476,11 +491,11 @@ public:
             ValueType interpolation_value;
             interp_value(it_prev, it, higher, interpolation_value);
 
-            value_container.emplace_back(interpolation_value);
-            stamp_container.emplace_back(higher);
+            value_container->emplace_back(interpolation_value);
+            if(stamp_container) stamp_container->emplace_back(higher);
         }
 
-        return value_container.empty() ?
+        return value_container->empty() ?
                TemporalBufferQueryResult::TOO_FEW_MEASUREMENT : TemporalBufferQueryResult::AVAILABLE;
     }
 
@@ -783,8 +798,8 @@ public:
     TemporalBufferQueryResult
     get_value_between(const Timestamp& lower,
                       const Timestamp& higher,
-                      std::vector<ValueType>& value_container,
-                      std::vector<Timestamp>& stamp_container,
+                      std::vector<ValueType>* value_container,
+                      std::vector<Timestamp>* stamp_container,
                       bool include_lower = false)
     {
         // Return if the queue is shutdown
@@ -823,134 +838,76 @@ public:
     TemporalBufferQueryResult
     get_value_between_blocking(const Timestamp& lower,
                                const Timestamp& higher,
-                               std::vector<ValueType, Alloc>& value_container,
-                               std::vector<Timestamp>& stamp_container,
+                               std::vector<ValueType, Alloc>* value_container,
+                               std::vector<Timestamp>* stamp_container,
                                bool include_lower = false,
-                               const Timestamp& wait_duration = 1e7)
+                               const Timestamp& wait_duration = 10 * ms_to_ns)
     {
-        value_container.clear();
-        stamp_container.clear();
-
-        // Return if the queue is shutdown
-        if (shutdown_)
-        {
-            return TemporalBufferQueryResult::SHUTDOWN;
-        }
-
         // Lock region
         std::unique_lock<std::mutex> lck(data_mtx_);
 
         // Wait for data
-        auto result = wait_for_available(lower, higher, lck, wait_duration);
-        if (result != TemporalBufferQueryResult::AVAILABLE)
+        TemporalBufferQueryResult query_result;
+        data_cv_.wait_for(lck, std::chrono::nanoseconds(wait_duration), [&]
         {
-            return result;
-        }
+            query_result = buffer_.get_value_between(lower, higher, value_container, stamp_container, include_lower);
 
-        // Get value before unlock.
-        result = buffer_.get_value_between(lower, higher, value_container, stamp_container, include_lower);
+            if (shutdown_) return true;
+            if (query_result == TemporalBufferQueryResult::NOT_YAT_AVALIABLE) return false;
+            return true;
+        });
+
+        if (shutdown_)
+        {
+            return TemporalBufferQueryResult::SHUTDOWN;
+        }
 
         // Unlock before notify.
         lck.unlock();
         data_cv_.notify_one();
 
-        return result;
+        return query_result;
     }
 
     template <typename Alloc = std::allocator<ValueType>>
     TemporalBufferQueryResult
     get_value_btw_with_interp_blocking(const Timestamp& lower, const Timestamp& higher,
-                                       std::vector<ValueType, Alloc>& value_container,
-                                       std::vector<Timestamp>& stamp_container,
+                                       std::vector<ValueType, Alloc>* value_container,
+                                       std::vector<Timestamp>*stamp_container,
                                        bool with_left_border_interpolated = false,
                                        bool with_right_border_interpolated = false,
                                        const Timestamp& wait_duration = 1e7)
     {
-        value_container.clear();
-        stamp_container.clear();
-
-        // Return if the queue is shutdown
-        if (shutdown_)
-        {
-            return TemporalBufferQueryResult::SHUTDOWN;
-        }
-
         // Lock region
         std::unique_lock<std::mutex> lck(data_mtx_);
 
         // Wait for data
-        auto result = wait_for_available(lower, higher, lck, wait_duration);
-        if (result != TemporalBufferQueryResult::AVAILABLE)
-        {
-            return result;
-        }
-
-        // Get value before unlock.
-        return buffer_.get_value_btw_with_interp(lower, higher, value_container, stamp_container,
-                                                 with_left_border_interpolated,
-                                                 with_right_border_interpolated);
-    }
-
-
-protected:
-
-
-    TemporalBufferQueryResult wait_for_available(const Timestamp& lower,
-                                                 const Timestamp& higher,
-                                                 std::unique_lock<std::mutex>& lck,
-                                                 const Timestamp& wait_duration)
-    {
         TemporalBufferQueryResult query_result;
-
-
         data_cv_.wait_for(lck, std::chrono::nanoseconds(wait_duration), [&]
         {
-            query_result = buffer_.is_data_available(lower, higher);
-            return shutdown_ && query_result == TemporalBufferQueryResult::AVAILABLE;
+            query_result = buffer_.get_value_btw_with_interp(lower, higher, value_container, stamp_container,
+                                                             with_left_border_interpolated,
+                                                             with_right_border_interpolated);
+
+            if (shutdown_) return true;
+            if (query_result == TemporalBufferQueryResult::NOT_YAT_AVALIABLE) return false;
+            return true;
         });
 
-        // Return if the queue is shutdown.
         if (shutdown_)
         {
-            LOG(WARNING) << "The buffer is down.";
             return TemporalBufferQueryResult::SHUTDOWN;
         }
 
-        if (VLOG_IS_ON(3))
-        {
-            switch (query_result)
-            {
-                case TemporalBufferQueryResult::NOT_YAT_AVALIABLE:
-                {
-                    LOG(WARNING)
-                        << "The relevant data is not yet available.";
-                    break;
-                }
-                case TemporalBufferQueryResult::NERVER_AVAILABLE:
-                {
-                    LOG(WARNING)
-                        << "The relevant data will never be available. "
-                        << "Either the buffer is too small or a sync issue "
-                        << "occurred.";
-                    break;
-                }
-                case TemporalBufferQueryResult::TOO_FEW_MEASUREMENT:
-                {
-                    LOG(WARNING)
-                        << "The relevant data is too few. Maybe the buffer is empty.";
-                    break;
-                }
-                case TemporalBufferQueryResult::SHUTDOWN:
-                case TemporalBufferQueryResult::AVAILABLE:
-                {
-                    return query_result;
-                }
-            }
-        }
+        // Unlock before notify.
+        lck.unlock();
+        data_cv_.notify_one();
 
         return query_result;
     }
 
+
+protected:
 
     InternalBuffer buffer_;
 

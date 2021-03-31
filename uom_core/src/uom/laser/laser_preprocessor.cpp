@@ -1,5 +1,7 @@
 #include <glog/logging.h>
 
+#include "uom/utils/timer.hpp"
+#include "uom/utils/statistics.hpp"
 #include "uom/utils/math_utils.hpp"
 #include "uom/laser/laser_preprocessor.hpp"
 
@@ -17,19 +19,26 @@ void CloudFeatureExtractor::process(
 
     /// Process IMU If we have
     Quaterniond quat = Quaterniond::Identity();
-    if (imu_data_vec)
+    if (params_.to_undistort && imu_data_vec)
     {
         quat = process_imu(*imu_data_vec);
     }
 
-    /// Use timestamp and quat to undistort points.
-    undistortion(in_cloud, quat);
+    StatsCollector timing_undistortion_stats("undistortion [ms]");
+    StatsCollector timing_compute_rejection_stats("compute_rejection [ms]");
+    StatsCollector timing_compute_features_stats("compute_features [ms]");
 
-    /// Set PointInfo and find splitting scan
-    compute_rejection();
+    /// Use timestamp and quat to undistort points.
+    timing_undistortion_stats.AddSample(
+        Measure<std::chrono::milliseconds>::execution([&]{ undistortion(in_cloud, quat); }));
+
+    /// Set PointInfo and find splitting scan. We use Original Cloud to split points, instead of undistort points.
+    timing_compute_rejection_stats.AddSample(
+        Measure<std::chrono::milliseconds>::execution([&] { compute_rejection(in_cloud); }));
 
     /// Compute critical and get features
-    compute_features(out_corn, out_surf);
+    timing_compute_features_stats.AddSample(
+        Measure<std::chrono::milliseconds>::execution([&] { compute_features(out_corn, out_surf); }));
 
     /// Construct full pointcloud After computing curvature
     out_full.clear();
@@ -41,6 +50,8 @@ void CloudFeatureExtractor::process(
             out_full.emplace_back(points_undistort_[idx]);
         }
     }
+
+    LOG(INFO) << Statistics::Print();
 }
 
 void CloudFeatureExtractor::compute_features(PointCloud& pc_corners, PointCloud& pc_surface)
@@ -58,12 +69,12 @@ void CloudFeatureExtractor::compute_features(PointCloud& pc_corners, PointCloud&
             continue;
         }
 
-        const size_t pts_size = pts_idx_vec.size();
-        const size_t end_idx = pts_size - params_.curvature_ssd_size;
+        const std::size_t pts_size = pts_idx_vec.size();
+        const std::size_t end_idx = pts_size - params_.curvature_ssd_size;
 
-        for (size_t i = params_.curvature_ssd_size; i < end_idx; ++i)
+        for (std::size_t i = params_.curvature_ssd_size; i < end_idx; ++i)
         {
-            size_t pt_idx = pts_idx_vec[i];
+            std::size_t pt_idx = pts_idx_vec[i];
             auto& curr_pt_info = point_info_[pt_idx];
             auto& curr_pt = points_undistort_[pt_idx];
 
@@ -72,7 +83,7 @@ void CloudFeatureExtractor::compute_features(PointCloud& pc_corners, PointCloud&
 
             Vector3f neighbor_accumulate = -2.f * params_.curvature_ssd_size * curr_pt.getVector3fMap();
             float reflectivity_accumulate = -2.f * params_.curvature_ssd_size * curr_pt_info.sigma;
-            for (size_t j = 1; j <= params_.curvature_ssd_size; ++j)
+            for (std::size_t j = 1; j <= params_.curvature_ssd_size; ++j)
             {
                 const auto& temp1 = pts_idx_vec[i - j];
                 const auto& temp2 = pts_idx_vec[i + j];
@@ -86,8 +97,8 @@ void CloudFeatureExtractor::compute_features(PointCloud& pc_corners, PointCloud&
             curr_pt_info.reflectivity_curvature = std::abs(reflectivity_accumulate);
 
             // Compute plane incident angle
-            size_t plane_a_idx = pts_idx_vec[i + params_.curvature_ssd_size];
-            size_t plane_c_idx = pts_idx_vec[i - params_.curvature_ssd_size];
+            std::size_t plane_a_idx = pts_idx_vec[i + params_.curvature_ssd_size];
+            std::size_t plane_c_idx = pts_idx_vec[i - params_.curvature_ssd_size];
 
             Vector3f plane_a = points_undistort_[plane_a_idx].getVector3fMap();
             Vector3f plane_c = points_undistort_[plane_c_idx].getVector3fMap();
@@ -129,7 +140,7 @@ void CloudFeatureExtractor::compute_features(PointCloud& pc_corners, PointCloud&
             // Reject
             if (curr_pt_info.ft_type & PointInfo::FT_CORNER)
             {
-                for (size_t j = 1; j <= params_.curvature_ssd_size; ++j)
+                for (std::size_t j = 1; j <= params_.curvature_ssd_size; ++j)
                 {
                     auto& prev_point_info = point_info_[pts_idx_vec[i - j]];
                     if (curr_pt_info.curvature > prev_point_info.curvature)
@@ -164,9 +175,9 @@ void CloudFeatureExtractor::compute_features(PointCloud& pc_corners, PointCloud&
 }
 
 
-void CloudFeatureExtractor::compute_rejection()
+void CloudFeatureExtractor::compute_rejection(const PointCloud& origin_cloud)
 {
-    const size_t pts_size = points_undistort_.size();
+    const std::size_t pts_size = points_undistort_.size();
 
     point_info_.clear();
     point_info_.resize(pts_size);
@@ -174,12 +185,14 @@ void CloudFeatureExtractor::compute_rejection()
     point_idx_per_scan_.clear();
     point_idx_per_scan_.emplace_back(); // first scan.
 
-    size_t prev_valid_idx = 0;
+    std::size_t prev_valid_idx = 0;
 
     /// Do projection and mark rejection
-    for (size_t idx = 0; idx < pts_size; ++idx)
+    for (std::size_t idx = 0; idx < pts_size; ++idx)
     {
-        auto& curr_pt = points_undistort_[idx];
+        // We have to use original point cloud instead of undistorted cloud
+        auto& curr_pt = origin_cloud[idx];
+
         PointInfo* curr_pt_info = &point_info_[idx];
 
         // update information
@@ -266,20 +279,27 @@ void CloudFeatureExtractor::undistortion(const PointCloud& in_cloud, Quaterniond
     }
 
     // total time interval
-    const double dt = params_.time_interval_pts * in_cloud.size();
+    const double dt = laser_params_.time_interval_pts * in_cloud.size();
 
+    // split num_segment segment. All points in the same segment use same rotation parameter.
+    const int num_segment = 200;
     const Quaterniond q0 = Quaterniond::Identity();
+    Quaterniond q_table [num_segment + 1] { Quaterniond::Identity() };
+    for (int i = 0; i <= num_segment; ++i)
+    {
+        q_table[i] = q0.slerp(double(i)/num_segment, quat);
+    }
 
-    for (size_t i = 0; i < in_cloud.size(); ++i)
+    for (std::size_t i = 0; i < in_cloud.size(); ++i)
     {
         auto& pt_info = point_info_[i];
         auto& pt = in_cloud[i];
 
         // compute undistorted point
-        double ratio_i = params_.time_interval_pts * double(i) / dt;
+        double ratio_i = laser_params_.time_interval_pts * double(i) / dt;
         if (ratio_i >= 1.0) ratio_i = 1.0;
 
-        Quaterniond q_0_i = q0.slerp(ratio_i, quat);
+        const Quaterniond& q_0_i = q_table[int(num_segment * ratio_i)];
         Vector3d pt_s = q_0_i * (pt.getVector3fMap().cast<double>());
 
         PointType pt_out = pt;
@@ -347,12 +367,12 @@ cv::Mat CloudFeatureExtractor::get_debug_image()
         }
         cv::Scalar point_color(color.x(), color.y(), color.z());
 
-        for (size_t i = 0; i < vec.size(); ++i)
+        for (std::size_t i = 0; i < vec.size(); ++i)
         {
             auto& pt_info = point_info_[vec[i]];
             cv::Point2i p_i(scale * pt_info.pt_normalized.x() + image_size / 2,
                             scale * pt_info.pt_normalized.y() + image_size / 2);
-            cv::circle(display_image, p_i, 1, point_color * (0.5 * double(i) / double(vec.size()) + 0.5), -1,
+            cv::circle(display_image, p_i, 2, point_color * (0.5 * double(i) / double(vec.size()) + 0.5), -1,
                        cv::LINE_AA);
         }
     }

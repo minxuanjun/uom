@@ -6,10 +6,6 @@
 
 struct CloudFeatureExtractorParams : ParamsBase
 {
-
-    /// Average time interval between points. Used to assign accurate timestamp.
-    double time_interval_pts = 1.0e-5; // 10us = 1e-5
-
     /// Range filtering
     float min_allow_dist = 1.0;
 
@@ -22,6 +18,7 @@ struct CloudFeatureExtractorParams : ParamsBase
     /// Minimal incident angle between the laser ray and the local plane around the measured point (degree)
     float min_incident_angle = 10.0;
 
+    /// Feature threshold
     float threshold_surf_curvature = 0.005;
     float threshold_corn_curvature = 0.001;
     float threshold_corn_reflectivity = 0.05;
@@ -29,12 +26,13 @@ struct CloudFeatureExtractorParams : ParamsBase
     /// Half number of neighborhood used to compute curvature
     size_t curvature_ssd_size = 2;
 
+    /// If we want to undistort points
+    bool to_undistort = false;
 
     void parse_yaml(const std::string& file_path) override
     {
         YamlParser parser(file_path);
 
-        parser.get_param("time_interval_pts", time_interval_pts);
         parser.get_param("min_allow_dist", min_allow_dist);
         parser.get_param("min_sigma", min_sigma);
         parser.get_param("min_incident_angle", min_incident_angle);
@@ -42,7 +40,7 @@ struct CloudFeatureExtractorParams : ParamsBase
         parser.get_param("threshold_surf_curvature", threshold_surf_curvature);
         parser.get_param("threshold_corn_curvature", threshold_corn_curvature);
         parser.get_param("threshold_corn_reflectivity", threshold_corn_reflectivity);
-
+        parser.get_param("to_undistort", to_undistort);
         parser.get_param("max_circle_edge_reject", max_near_fov);
         CHECK_GT(max_near_fov, 0);
         CHECK_LT(max_near_fov, 80);
@@ -65,7 +63,7 @@ struct CloudFeatureExtractorParams : ParamsBase
             "min_allow_dist", min_allow_dist,
             "min_sigma", min_sigma,
             "min_incident_angle", min_incident_angle,
-            "time_interval_pts", time_interval_pts,
+            "to_undistort", to_undistort,
             "threshold_surf_curvature", threshold_surf_curvature,
             "threshold_corn_curvature", threshold_corn_curvature,
             "threshold_corn_reflectivity", threshold_corn_reflectivity

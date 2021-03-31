@@ -39,11 +39,14 @@ include_directories(thirdparty/ros/include)
 
 
 add_library(uom SHARED
+  src/uom/utils/statistics.cpp
   src/uom/imu/pre_integration.cpp
+  src/uom/imu/static_initialization.cpp
   src/uom/sim/simple_simulator.cpp
   src/uom/vision/camera_params.cpp
   src/uom/laser/laser_params.cpp
-  src/uom/laser/laser_preprocessor.cpp)
+  src/uom/laser/laser_preprocessor.cpp
+  src/uom/laser/laser_odometry.cpp)
 
 
 target_include_directories(uom PUBLIC
@@ -73,6 +76,10 @@ target_link_libraries(simple_simulator_node uom)
 add_executable(laser_preprocessor_node
   src/uom/laser/laser_preprocessor_node.cpp)
 target_link_libraries(laser_preprocessor_node uom)
+
+add_executable(laser_odometry_node
+  src/uom/laser/laser_odometry_node.cpp)
+target_link_libraries(laser_odometry_node uom)
 
 
 option('BUILD_TESTS' "Build tests" OFF)

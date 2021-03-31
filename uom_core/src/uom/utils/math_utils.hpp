@@ -2,12 +2,12 @@
 
 #include <Eigen/Eigen>
 
-
+/// Useful conversion variable
 constexpr static double deg2rad = M_PI / 180.0;
-
 constexpr static double rad2deg = 180.0 / M_PI;
 
 
+/// Compute the angle between two vector
 template <typename T>
 inline T vector_angle(const Eigen::Matrix<T, 3, 1>& vec_a, const Eigen::Matrix<T, 3, 1>& vec_b,
                       bool force_sharp_angle = true)
@@ -33,6 +33,7 @@ inline T vector_angle(const Eigen::Matrix<T, 3, 1>& vec_a, const Eigen::Matrix<T
 }
 
 
+/// Compute eigenvalues and eigenvectors for a series of points
 template <typename T, int DIM>
 inline void solve_eigen(const std::vector<Eigen::Matrix<T, DIM, 1>>& pts,
                         Eigen::Matrix<T, 1, DIM>& eigen_value, Eigen::Matrix<T, DIM, DIM>& eigen_vector)
@@ -62,7 +63,7 @@ inline void solve_eigen(const std::vector<Eigen::Matrix<T, DIM, 1>>& pts,
 }
 
 
-// Get quaternion from rotation vector
+/// Get quaternion from rotation vector
 template <typename Derived>
 Eigen::Quaternion<typename Derived::Scalar> delta_Q(const Eigen::MatrixBase<Derived>& theta)
 {

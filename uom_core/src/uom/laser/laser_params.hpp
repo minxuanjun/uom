@@ -36,6 +36,9 @@ struct LaserParams : ParamsBase
     /// Ext parameters
     double timeshift_laser_imu = 0; // time shift from laser to imu: [s] (t_imu = t_laser + shift)
 
+    /// Average time interval between points. Used to assign accurate timestamp.
+    double time_interval_pts = 1.0e-5; // 10us
+
     /**
      * @brief CameraParams::parse_yaml with a laser_name is used to read param from a camchain file
      */
@@ -61,7 +64,8 @@ struct LaserParams : ParamsBase
                 "Laser ID: ", laser_name,
                 "Laser Model: ", laser_model,
                 "Time Shift: ", timeshift_laser_imu,
-                "T_imu_laser: ", T_imu_laser
+                "T_imu_laser: ", T_imu_laser,
+                "time_interval_pts", time_interval_pts
             );
 
         LOG(INFO) << out.str();
@@ -78,6 +82,9 @@ private:
         std::string laser_model_str;
         yaml_parser.get_nested_param(laser_name, "laser_model", laser_model_str);
         laser_model = string_to_laser_model(laser_model_str);
+
+        /// time_interval_pts
+        yaml_parser.get_nested_param(laser_name, "time_interval_pts", time_interval_pts);
 
         /// timeshift_cam_imu
         yaml_parser.get_nested_param(laser_name, "timeshift_laser_imu", timeshift_laser_imu);

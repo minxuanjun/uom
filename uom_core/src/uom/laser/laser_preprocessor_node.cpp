@@ -8,7 +8,8 @@
 #include <thread>
 
 #include "uom/utils/threadsafe_queue.hpp"
-#include "uom_msgs/cloud_feature.h"
+#include "uom/utils/temporal_buffer.hpp"
+#include "uom_msgs/CloudFeature.h"
 #include "uom/laser/laser_preprocessor.hpp"
 
 
@@ -16,7 +17,8 @@ class SimpleSynchronizer
 {
 public:
 
-    SimpleSynchronizer(): cloud_data_queue_("cloud_data_queue") {}
+    SimpleSynchronizer(const LaserParams& laser_params) :
+        laser_params_(laser_params), imu_data_buffer_(s_to_ns), cloud_data_queue_("cloud_data_queue"){}
     ~SimpleSynchronizer() = default;
 
 
@@ -26,7 +28,7 @@ public:
         nh_private_ = ros::NodeHandle("~");
 
         sub_cloud_ = nh_private_.subscribe<sensor_msgs::PointCloud2>(
-            "/livox/lidar", 10, &SimpleSynchronizer::add_cloud, this);
+            laser_params_.rostopic, 10, &SimpleSynchronizer::add_cloud, this);
 
         sub_imu_ = nh_private_.subscribe<sensor_msgs::Imu>(
             "/zed2_node/imu/data", 10, &SimpleSynchronizer::add_imu, this);
@@ -48,10 +50,7 @@ protected:
 
     void add_imu(const sensor_msgs::ImuConstPtr& msg)
     {
-        std::unique_lock<std::mutex> lk(mtx_imu_queue_);
-        imu_data_queue_.emplace(msg);
-        lk.unlock();
-        cv_imu_queue_.notify_one();
+        imu_data_buffer_.add_value(msg->header.stamp.toNSec(), msg);
     }
 
     void add_cloud(const sensor_msgs::PointCloud2ConstPtr& msg)
@@ -59,94 +58,53 @@ protected:
         cloud_data_queue_.push(msg);
     }
 
-
-    inline bool is_imu_available(Timestamp t) const
-    {
-        return !imu_data_queue_.empty() && t <= imu_data_queue_.back()->header.stamp.toNSec();
-    }
-
-
-    bool get_imu_interval(Timestamp t0, Timestamp t1, std::vector<sensor_msgs::ImuConstPtr>& value)
-    {
-        value.clear();
-
-        if (imu_data_queue_.empty())
-        {
-            ROS_WARN("not receive imu");
-            return false;
-        }
-
-        if (t1 <= imu_data_queue_.back()->header.stamp.toNSec())
-        {
-            while (imu_data_queue_.front()->header.stamp.toNSec() <= t0)
-            {
-                imu_data_queue_.pop();
-            }
-            while (imu_data_queue_.front()->header.stamp.toNSec()< t1)
-            {
-                value.emplace_back(imu_data_queue_.front());
-                imu_data_queue_.pop();
-            }
-            value.emplace_back(imu_data_queue_.front());
-        }
-        else
-        {
-            ROS_WARN("wait for imu");
-            return false;
-        }
-        return true;
-    }
-
-
     void internal_spin()
     {
         while(ros::ok())
         {
             /// Wait for cloud
             sensor_msgs::PointCloud2ConstPtr cloud_msg;
-            cloud_data_queue_.pop_blocking(cloud_msg);
 
-            if (last_cloud_time_ > cloud_msg->header.stamp.toNSec())
+            if (!cloud_data_queue_.pop_blocking_with_timeout(cloud_msg, 10 * ms_to_ns))
             {
-                mtx_imu_queue_.lock();
-                decltype(imu_data_queue_)().swap(imu_data_queue_); // clear all
-                last_cloud_time_ = cloud_msg->header.stamp.toNSec();
-                return;
+                continue;
             }
-            last_cloud_time_ = cloud_msg->header.stamp.toNSec();
+
+            Timestamp curr_cloud_timestamp = cloud_msg->header.stamp.toNSec();
+            if (last_cloud_time_ > curr_cloud_timestamp)
+            {
+                imu_data_buffer_.clear();
+            }
+            last_cloud_time_ = curr_cloud_timestamp;
 
             if (callback_)
             {
                 CloudFeatureExtractor::PointCloud  cloud;
                 pcl::fromROSMsg(*cloud_msg, cloud);
 
-
                 /// Wait for IMU
-
-                Timestamp s_t = cloud_msg->header.stamp.toNSec();
-                Timestamp e_t = cloud_msg->header.stamp.toNSec() + 0.1 * s_to_ns;
-
-                // Try to lock
-                std::unique_lock<std::mutex> imu_queue_lk(mtx_imu_queue_);
-
-                // Wait until
-                cv_imu_queue_.wait(imu_queue_lk, [&] { return is_imu_available(e_t); });
+                const Timestamp s_t = curr_cloud_timestamp;
+                const Timestamp e_t = curr_cloud_timestamp +
+                    laser_params_.time_interval_pts * cloud.size() * s_to_ns;
 
                 std::vector<sensor_msgs::ImuConstPtr> imu_values;
-                get_imu_interval(s_t, e_t, imu_values);
+                auto result = imu_data_buffer_.get_value_between_blocking(s_t, e_t, &imu_values, nullptr, true);
 
-                // Unlock before notify.
-                imu_queue_lk.unlock();
-                cv_imu_queue_.notify_one();
-
-
-                ROS_INFO_STREAM("imu_values size = " << imu_values.size());
-                callback_(cloud, imu_values);
+                if (result == TemporalBufferQueryResult::AVAILABLE)
+                {
+                    ROS_INFO_STREAM("imu_values size = " << imu_values.size());
+                    callback_(cloud, imu_values);
+                }
+                else
+                {
+                    ROS_INFO_STREAM("Drop cloud, reason = " << result << ", queue size = " << imu_data_buffer_.size());
+                }
             }
         }
     }
 
-
+    // parameters
+    LaserParams laser_params_;
 
     // ros
     ros::NodeHandle nh_;
@@ -156,11 +114,7 @@ protected:
 
     // buffers
     Timestamp last_cloud_time_ = 0;
-
-    std::mutex mtx_imu_queue_;
-    std::condition_variable cv_imu_queue_;
-    std::queue<sensor_msgs::ImuConstPtr> imu_data_queue_;
-
+    ThreadsafeTemporalBuffer<sensor_msgs::ImuConstPtr> imu_data_buffer_;
     ThreadsafeQueue<sensor_msgs::PointCloud2ConstPtr> cloud_data_queue_;
 
     // callback
@@ -185,7 +139,7 @@ int main(int argc, char** argv)
     auto pub_surf = nh_private.advertise<sensor_msgs::PointCloud2>("surf", 10, true);
     auto pub_corn = nh_private.advertise<sensor_msgs::PointCloud2>("corn", 10, true);
     auto pub_full = nh_private.advertise<sensor_msgs::PointCloud2>("full", 10, true);
-    auto pub_feature = nh_private.advertise<sensor_msgs::PointCloud2>("feature", 10, false);
+    auto pub_feature = nh_private.advertise<uom_msgs::CloudFeature>("feature", 10, false);
 
 
     CloudFeatureExtractorParams params;
@@ -209,7 +163,7 @@ int main(int argc, char** argv)
         std_msgs::Header header;
         header.frame_id = header.frame_id;
         header.seq = header.seq;
-        header.stamp.fromNSec(cloud.header.stamp);
+        pcl_conversions::fromPCL(cloud.header.stamp, header.stamp);
         auto img_msg = cv_bridge::CvImage(header, "bgr8", debug_image).toImageMsg();
         pub_debug_image.publish(img_msg);
 
@@ -218,7 +172,7 @@ int main(int argc, char** argv)
         if(pub_full.getNumSubscribers() > 0) pub_full.publish(full);
         if(pub_feature.getNumSubscribers() > 0)
         {
-            uom_msgs::cloud_feature::Ptr feat (new uom_msgs::cloud_feature);
+            uom_msgs::CloudFeature::Ptr feat (new uom_msgs::CloudFeature);
             feat->header = header;
             feat->pose.orientation.w = 1;
             pcl::toROSMsg(full, feat->full);
@@ -228,7 +182,7 @@ int main(int argc, char** argv)
         }
     };
 
-    SimpleSynchronizer simple_synchronizer;
+    SimpleSynchronizer simple_synchronizer(laser_params);
 
     simple_synchronizer.add_callback(cloud_callback);
     simple_synchronizer.init_ros_env();

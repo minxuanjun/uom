@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "uom/utils/common_types.hpp"
 
 
@@ -16,3 +18,5 @@ struct ImuData
     /// Raw Measurement of gyro
     Vector3d gyr = Vector3d::Zero();
 };
+
+using ImuDataVector = std::vector<ImuData>;

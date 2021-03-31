@@ -51,6 +51,12 @@ protected:
         print_impl(out, name, ss.str());
     }
 
+    template <typename TName>
+    void print_impl(std::stringstream& out, TName name, bool value) const
+    {
+        print_impl(out, name, value ? "true":"false");
+    }
+
 
     template <typename TName, typename TValue>
     void print_impl_recur(std::stringstream& out, TName name, TValue value) const

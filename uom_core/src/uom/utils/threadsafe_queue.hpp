@@ -66,7 +66,7 @@ public:
     // * @param duration_ms Time to wait for a msg [ns].
     // * @return Returns false if the queue has been shutdown or if it was timeout.
     // */
-    //virtual bool front_blocking_with_timeout(T& value, size_t duration) = 0;
+    //virtual bool front_blocking_with_timeout(T& value, Timestamp duration) = 0;
 
 
     /**
@@ -85,7 +85,7 @@ public:
      * queue, and it will wait for a consumer to remove messages.
      * @return False if the queue has been shutdown.
      */
-    virtual bool push_blocking_if_full(T new_value, size_t max_queue_size = 10u) = 0;
+    virtual bool push_blocking_if_full(T new_value, std::size_t max_queue_size = 10u) = 0;
 
 
     /**
@@ -132,7 +132,7 @@ public:
      * @param duration Time to wait for a msg [ns].
      * @return Returns false if the queue has been shutdown or if it was timeout.
      */
-    virtual bool pop_blocking_with_timeout(T& value, size_t duration) = 0;
+    virtual bool pop_blocking_with_timeout(T& value, Timestamp duration) = 0;
 
 
     /**
@@ -184,6 +184,16 @@ public:
     {
         std::lock_guard<std::mutex> lk(data_mtx_);
         return data_queue_.empty();
+    }
+
+    /**
+     * @brief Clear the internal buffer
+     * @return
+     */
+    inline void clear() const
+    {
+        std::lock_guard<std::mutex> lk(data_mtx_);
+        decltype(data_queue_)().swap(data_queue_);
     }
 
 
@@ -348,7 +358,7 @@ public:
     }
 
 
-    bool push_blocking_if_full(T new_value, size_t max_queue_size = 10u) override
+    bool push_blocking_if_full(T new_value, std::size_t max_queue_size = 10u) override
     {
         // Return if the queue is shutdown
         if (shutdown_)
@@ -553,7 +563,7 @@ public:
     }
 
 
-    bool pop_blocking_with_timeout(T& value, size_t duration) override
+    bool pop_blocking_with_timeout(T& value, Timestamp duration) override
     {
         // Return if the queue is shutdown
         if (shutdown_)
@@ -618,7 +628,7 @@ public:
         return true;
     }
 
-    virtual bool push_blocking_if_full(T, size_t)
+    virtual bool push_blocking_if_full(T, Timestamp)
     {
         return true;
     };

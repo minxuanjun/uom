@@ -1,0 +1,16 @@
+%YAML:1.0
+
+#Accelerometers
+accelerometer_noise_density: 0.0015999999595806003  # Noise density (continuous-time)
+accelerometer_random_walk:   0.0002508999896235764  # Bias random walk
+
+#Gyroscopes
+gyroscope_noise_density:     0.007000000216066837   # Noise density (continuous-time)
+gyroscope_random_walk:       0.0019474000437185168  # Bias random walk
+
+rostopic:                    /zed2_node/imu/data    # the IMU ROS topic
+update_rate:                 400.0                  # Hz (for discretization of the values above)
+
+initial_acc_bias:            0
+initial_omg_bias:            0
+n_gravity:                   [0, 0, -9.81]

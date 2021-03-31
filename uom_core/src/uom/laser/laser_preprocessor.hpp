@@ -40,7 +40,7 @@ struct PointInfo
     int ft_type = FT_UNLABELED;
 
     /// Index of point in original cloud
-    size_t index = 0;
+    std::size_t index = 0;
 
     /// Value in intensity field of original input point
     float raw_intensity = 0.f;
@@ -104,7 +104,7 @@ protected:
     Quaterniond process_imu(const std::vector<sensor_msgs::ImuConstPtr>& imu_data_vec);
 
 
-    void compute_rejection();
+    void compute_rejection(const PointCloud& origin_cloud);
 
 
     void compute_features(PointCloud& pc_corners, PointCloud& pc_surface);
@@ -112,13 +112,13 @@ protected:
 
     /// \brief Update properties of a point and its neighborhood.
     inline void update_mask_of_point(
-        PointInfo* point_info, const PointInfo::PointType& type, size_t neighbor_radius = 0)
+        PointInfo* point_info, const PointInfo::PointType& type, std::size_t neighbor_radius = 0)
     {
         DCHECK(neighbor_radius > 0);
         DCHECK(neighbor_radius <= point_info_.size() / 2);
 
         point_info->pt_type |= type;
-        for (size_t i = 1; i <= neighbor_radius; ++i)
+        for (std::size_t i = 1; i <= neighbor_radius; ++i)
         {
             if (point_info->index - i < point_info_.size()) point_info_[point_info->index - i].pt_type |= type;
             if (point_info->index - i < point_info_.size()) point_info_[point_info->index - i].pt_type |= type;
@@ -136,7 +136,7 @@ protected:
     std::vector<PointInfo> point_info_;
 
     /// Only inliers
-    std::vector<std::vector<size_t>> point_idx_per_scan_;
+    std::vector<std::vector<std::size_t>> point_idx_per_scan_;
 
     /// Undistort pointcloud
     std::vector<PointType> points_undistort_;
