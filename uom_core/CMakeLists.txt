@@ -25,7 +25,9 @@ find_package(catkin REQUIRED COMPONENTS
   message_filters
   uom_msgs)
 
-catkin_package()
+catkin_package(
+  CATKIN_DEPENDS uom_msgs
+)
 
 find_package(Ceres REQUIRED)
 find_package(yaml-cpp REQUIRED)
@@ -64,6 +66,7 @@ target_link_libraries(uom
   ${GFLAGS_LIBRARIES}
   ${GLOG_LIBRARIES}
   ${OpenCV_LIBS}
+  ${CERES_LIBRARIES}
   ${YAML_CPP_LIBRARIES}
   sophus)
 

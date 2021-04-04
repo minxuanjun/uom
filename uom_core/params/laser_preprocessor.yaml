@@ -1,11 +1,11 @@
 min_allow_dist: 1.0
 min_sigma: 7e-4
-min_incident_angle: 5.0
+min_incident_angle: 1.0
 max_circle_edge_reject: 17
 curvature_ssd_size: 3
 threshold_surf_curvature: 0.0025
-threshold_corn_curvature: 0.1
-threshold_corn_reflectivity: 120000
+threshold_corn_curvature: 0.05
+threshold_corn_reflectivity: 20
 to_undistort: true
 
 laser0:

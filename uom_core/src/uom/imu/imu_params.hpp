@@ -31,6 +31,8 @@ struct ImuParams : ParamsBase
 
     double integration_cov = 0.0001;
 
+    std::string imu_rostopic = "/imu_data";
+
     void parse_yaml(const std::string& file_path) override
     {
         YamlParser yaml_parser(file_path);
@@ -54,6 +56,7 @@ struct ImuParams : ParamsBase
         n_gravity = Vector3d(n_gravity_array.data());
 
         yaml_parser.get_param("integration_cov", integration_cov);
+        yaml_parser.get_param("rostopic", imu_rostopic);
     }
 
     void print() override
@@ -74,7 +77,8 @@ struct ImuParams : ParamsBase
                 "gyroscope_random_walk: ", gyr_w,
                 "linearized_ba: ", linearized_ba,
                 "linearized_bg: ", linearized_bg,
-                "n_gravity: ", n_gravity
+                "n_gravity: ", n_gravity,
+                "rostopic", imu_rostopic
             );
 
         LOG(INFO) << out.str();

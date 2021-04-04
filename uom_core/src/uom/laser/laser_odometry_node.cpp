@@ -20,7 +20,9 @@ class SimpleSynchronizer
 {
 public:
 
-    SimpleSynchronizer(): imu_data_buffer_(1 * s_to_ns), feature_cloud_queue_("feature_cloud_queue") {}
+    SimpleSynchronizer(const LaserParams& laser_params, const ImuParams& imu_params):
+        laser_params_(laser_params), imu_params_(imu_params),
+        imu_data_buffer_(1 * s_to_ns), feature_cloud_queue_("feature_cloud_queue") {}
     ~SimpleSynchronizer() = default;
 
 
@@ -33,7 +35,7 @@ public:
             "/laser_preprocessor_node/feature", 10, &SimpleSynchronizer::add_cloud_feature, this);
 
         sub_imu_ = nh_private_.subscribe<sensor_msgs::Imu>(
-            "/zed2_node/imu/data", 10, &SimpleSynchronizer::add_imu, this);
+            imu_params_.imu_rostopic, 10, &SimpleSynchronizer::add_imu, this);
 
 
         internal_spin_thread_ = std::thread([this]{ internal_spin();});
@@ -101,6 +103,10 @@ protected:
         }
     }
 
+    // Sensor Setting
+    LaserParams laser_params_;
+    ImuParams imu_params_;
+
     // ros
     ros::NodeHandle nh_;
     ros::NodeHandle nh_private_;
@@ -157,7 +163,8 @@ int main(int argc, char** argv)
 
     /// Configure ROS interface
     auto pub_odom = nh_private.advertise<nav_msgs::Odometry>("pose", 10, true);
-    auto pub_path = nh_private.advertise<nav_msgs::Odometry>("path", 10, true);
+    auto pub_path = nh_private.advertise<nav_msgs::Path>("path", 10, true);
+    auto pub_local_map = nh_private.advertise<sensor_msgs::PointCloud2>("local_map", 10, true);
 
     nav_msgs::Odometry odom;
     nav_msgs::Path path;
@@ -191,6 +198,11 @@ int main(int argc, char** argv)
 
         /// Compute odometry
         odometry.process(nullptr, nullptr, surf, imu_data_vector);
+
+        if (auto local_map = odometry.get_local_map())
+        {
+            pub_local_map.publish(local_map);
+        }
 
         Quaterniond q_w;
         Vector3d t_w;
@@ -228,7 +240,7 @@ int main(int argc, char** argv)
     };
 
 
-    SimpleSynchronizer simple_synchronizer;
+    SimpleSynchronizer simple_synchronizer(laser_params, imu_params);
     simple_synchronizer.add_callback(cloud_callback);
     simple_synchronizer.init_ros_env();
 

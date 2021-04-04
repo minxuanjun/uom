@@ -9,16 +9,16 @@ struct State
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     /// Timestamp (second)
-    double t;
+    double t = 0.0;
 
     /// Position and Velocity in Global frame
-    Vector3d p, v;
+    Vector3d p = Vector3d::Zero(), v = Vector3d::Zero();
 
     /// Orientation in Global frame. aka. \mathbf{R}_{world}_{imu}
-    Quaterniond q;
+    Quaterniond q = Quaterniond::Identity();
 
     /// Bias for accelerator and gyroscope in Body frame
-    Vector3d ba, bg;
+    Vector3d ba = Vector3d::Zero(), bg = Vector3d::Zero();
 
 
     /// \brief Timestamp will be set to zero. Pose will be set to identity. Bias will be set to zero.

@@ -28,6 +28,7 @@ linearized_ba:               [0.00, 0.00, 0.00]
 linearized_bg:               [0.00, 0.00, 0.00]
 n_gravity:                   [0, 0, -9.81]
 integration_cov:             0.0001
+rostopic:                    imu_data
 
 # other
 camera_pixel_noise: 1.0

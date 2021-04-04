@@ -1,0 +1,26 @@
+<launch>
+
+    <param name="use_sim_time" value="true" />
+
+    <arg name="pre_params_path" default="$(find uom_core)/params/laser_preprocessor.yaml"/>
+    <arg name="imu_params_path" default="$(find uom_core)/params/imu.yaml"/>
+    <arg name="laser_params_path" default="$(find uom_core)/params/laserchain.yaml"/>
+    <arg name="odom_params_path" default="$(find uom_core)/params/odom.yaml"/>
+    <arg name="static_initializer_params_path" default="$(find uom_core)/params/init.yaml"/>
+
+    <node pkg="uom_core" type="laser_preprocessor_node" name="laser_preprocessor_node">
+        <param name="pre_params_path" value="$(arg pre_params_path)"/>
+        <param name="imu_params_path" value="$(arg imu_params_path)"/>
+        <param name="laser_params_path" value="$(arg laser_params_path)"/>
+    </node>
+
+    <node pkg="uom_core" type="laser_odometry_node" name="laser_odometry_node">
+        <param name="imu_params_path" value="$(arg imu_params_path)"/>
+        <param name="laser_params_path" value="$(arg laser_params_path)"/>
+        <param name="odom_params_path" value="$(arg odom_params_path)"/>
+        <param name="static_initializer_params_path" value="$(arg static_initializer_params_path)"/>
+    </node>
+
+    <node pkg="rviz" type="rviz" name="lio_rviz" args="-d $(find uom_core)/rviz/lio.rviz"/>
+
+</launch>

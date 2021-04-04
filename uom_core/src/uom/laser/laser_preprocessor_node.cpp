@@ -7,6 +7,7 @@
 #include <mutex>
 #include <thread>
 
+#include "uom/imu/imu_params.hpp"
 #include "uom/utils/threadsafe_queue.hpp"
 #include "uom/utils/temporal_buffer.hpp"
 #include "uom_msgs/CloudFeature.h"
@@ -17,8 +18,8 @@ class SimpleSynchronizer
 {
 public:
 
-    SimpleSynchronizer(const LaserParams& laser_params) :
-        laser_params_(laser_params), imu_data_buffer_(s_to_ns), cloud_data_queue_("cloud_data_queue"){}
+    SimpleSynchronizer(const LaserParams& laser_params, const ImuParams& imu_params) :
+        laser_params_(laser_params), imu_params_(imu_params), imu_data_buffer_(s_to_ns), cloud_data_queue_("cloud_data_queue"){}
     ~SimpleSynchronizer() = default;
 
 
@@ -31,7 +32,7 @@ public:
             laser_params_.rostopic, 10, &SimpleSynchronizer::add_cloud, this);
 
         sub_imu_ = nh_private_.subscribe<sensor_msgs::Imu>(
-            "/zed2_node/imu/data", 10, &SimpleSynchronizer::add_imu, this);
+            imu_params_.imu_rostopic, 10, &SimpleSynchronizer::add_imu, this);
 
 
         internal_spin_thread_ = std::thread([this]{ internal_spin();});
@@ -105,6 +106,7 @@ protected:
 
     // parameters
     LaserParams laser_params_;
+    ImuParams imu_params_;
 
     // ros
     ros::NodeHandle nh_;
@@ -132,8 +134,13 @@ int main(int argc, char** argv)
     ros::NodeHandle nh;
     ros::NodeHandle nh_private("~");
 
-    std::string params_path;
-    nh_private.getParam("params_path", params_path);
+    std::string pre_params_path;
+    std::string imu_params_path;
+    std::string laser_params_path;
+    nh_private.getParam("pre_params_path", pre_params_path);
+    nh_private.getParam("imu_params_path", imu_params_path);
+    nh_private.getParam("laser_params_path", laser_params_path);
+
 
     auto pub_debug_image = nh_private.advertise<sensor_msgs::Image>("debug_image", 10, true);
     auto pub_surf = nh_private.advertise<sensor_msgs::PointCloud2>("surf", 10, true);
@@ -143,12 +150,16 @@ int main(int argc, char** argv)
 
 
     CloudFeatureExtractorParams params;
-    params.parse_yaml(params_path);
+    params.parse_yaml(pre_params_path);
     params.print();
 
     LaserParams laser_params;
-    laser_params.parse_yaml("laser0", params_path);
+    laser_params.parse_yaml("laser0", laser_params_path);
     laser_params.print();
+
+    ImuParams imu_params;
+    imu_params.parse_yaml(imu_params_path);
+    imu_params.print();
 
     CloudFeatureExtractor extractor(params, laser_params);
 
@@ -161,9 +172,7 @@ int main(int argc, char** argv)
 
         cv::Mat debug_image = extractor.get_debug_image();
         std_msgs::Header header;
-        header.frame_id = header.frame_id;
-        header.seq = header.seq;
-        pcl_conversions::fromPCL(cloud.header.stamp, header.stamp);
+        pcl_conversions::fromPCL(cloud.header, header);
         auto img_msg = cv_bridge::CvImage(header, "bgr8", debug_image).toImageMsg();
         pub_debug_image.publish(img_msg);
 
@@ -182,7 +191,7 @@ int main(int argc, char** argv)
         }
     };
 
-    SimpleSynchronizer simple_synchronizer(laser_params);
+    SimpleSynchronizer simple_synchronizer(laser_params, imu_params);
 
     simple_synchronizer.add_callback(cloud_callback);
     simple_synchronizer.init_ros_env();

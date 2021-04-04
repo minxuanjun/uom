@@ -9,8 +9,8 @@ void StaticInitializer::add_measurement(const ImuDataVector& imu_data_vec)
     // Append to buffer
     imu_buffer_.insert(imu_buffer_.end(), imu_data_vec.begin(), imu_data_vec.end());
 
-    // Dropout readings older then three of our initialization windows
-    const Timestamp& oldest_threshold = imu_buffer_.back().t - 3 * options_.window_length;
+    // Dropout readings older then three of our initialization windows (seconds)
+    const double& oldest_threshold = imu_buffer_.back().t - 3 * options_.window_length;
 
     auto it = imu_buffer_.begin();
     while (it != imu_buffer_.end() && it->t < oldest_threshold)
@@ -63,7 +63,7 @@ bool StaticInitializer::initialize(State& out_state)
     }
 
     // Newest imu timestamp
-    const Timestamp& newest_time = imu_buffer_.back().t;
+    const double& newest_time = imu_buffer_.back().t;
 
 
     // Collect two window of IMU readings.
@@ -71,11 +71,11 @@ bool StaticInitializer::initialize(State& out_state)
 
     for (auto& data: imu_buffer_)
     {
-        if (data.t > newest_time - 1 * options_.window_length && data.t <= newest_time - 0 * options_.window_length)
+        if (data.t > newest_time - 1.0 * options_.window_length && data.t <= newest_time - 0.0 * options_.window_length)
         {
             window_newest.emplace_back(data);
         }
-        if (data.t > newest_time - 2 * options_.window_length && data.t <= newest_time - 1 * options_.window_length)
+        if (data.t > newest_time - 2.0 * options_.window_length && data.t <= newest_time - 1.0 * options_.window_length)
         {
             window_second_new.emplace_back(data);
         }
@@ -111,8 +111,8 @@ bool StaticInitializer::initialize(State& out_state)
         return false;
     }
 
-    // Get z axis, which alines with  g (z_in_G = 0,0,1)
-    Vector3d z_axis = -acc_avg_w2.normalized();
+    // Get z axis, which aligned with  -g (z_in_G = 0,0,1)
+    Vector3d z_axis = acc_avg_w2.normalized();
 
     // Create an x_axis
     Vector3d e_1(1, 0, 0);
@@ -126,9 +126,9 @@ bool StaticInitializer::initialize(State& out_state)
 
     // From these axes get rotation
     Matrix3d R_W_I;
-    R_W_I.block(0, 0, 3, 1) = x_axis;
-    R_W_I.block(0, 1, 3, 1) = y_axis;
-    R_W_I.block(0, 2, 3, 1) = z_axis;
+    R_W_I.row(0) = x_axis;
+    R_W_I.row(1) = y_axis;
+    R_W_I.row(2) = z_axis;
 
     out_state.t = newest_time;
     out_state.q = Quaterniond(R_W_I);

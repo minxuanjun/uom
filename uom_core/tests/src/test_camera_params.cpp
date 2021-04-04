@@ -31,7 +31,7 @@ TEST(CameraParams, ReadParamters)
 
     EXPECT_EQ(1280, params.resolution.width);
     EXPECT_EQ(720, params.resolution.height);
-    EXPECT_EQ("/right_raw", params.rostopic);
+    EXPECT_EQ("/right_raw", params.cam_rostopic);
     EXPECT_EQ(0.0006595341199495037, params.timeshift_cam_imu);
 
     EXPECT_EQ(DistortionModel::RADTAN, params.distortion_model);

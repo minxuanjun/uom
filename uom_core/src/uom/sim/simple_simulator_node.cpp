@@ -75,14 +75,6 @@ int main(int argc, char** argv)
     ros::NodeHandle nh;
     ros::NodeHandle nh_private("~");
 
-    auto pub_imu_gt = nh_private.advertise<sensor_msgs::Imu>("/imu_data_gt", 400);
-    auto pub_imu_noised = nh_private.advertise<sensor_msgs::Imu>("/imu_data_noised", 400);
-    auto pub_cam_pose = nh_private.advertise<nav_msgs::Odometry>("/cam_pose", 1, true);
-    auto pub_integral_test_pose = nh_private.advertise<nav_msgs::Odometry>("/test_pose", 1, true);
-    auto pub_image = nh_private.advertise<sensor_msgs::Image>("/image_raw", 30);
-    auto pub_lines = nh_private.advertise<visualization_msgs::Marker>("/lines", 1, true);
-    auto pub_points = nh_private.advertise<sensor_msgs::PointCloud2>("/points", 1, true);
-
     int integral_method;
     std::string sim_data_path;
     std::string sim_params_path;
@@ -96,6 +88,14 @@ int main(int argc, char** argv)
     SimParams params;
     params.parse_yaml(sim_params_path);
     params.print();
+
+    auto pub_imu_gt = nh_private.advertise<sensor_msgs::Imu>(params.imu_rostopic + "_gt", 400);
+    auto pub_imu_noised = nh_private.advertise<sensor_msgs::Imu>(params.imu_rostopic, 400);
+    auto pub_cam_pose = nh_private.advertise<nav_msgs::Odometry>("cam_pose", 1, true);
+    auto pub_integral_test_pose = nh_private.advertise<nav_msgs::Odometry>("test_pose", 1, true);
+    auto pub_image = nh_private.advertise<sensor_msgs::Image>(params.cam_rostopic, 30);
+    auto pub_lines = nh_private.advertise<visualization_msgs::Marker>("lines", 1, true);
+    auto pub_points = nh_private.advertise<sensor_msgs::PointCloud2>("points", 1, true);
 
     SimpleSimulator simple_simulator(sim_data_path);
     auto sim_data = simple_simulator.generate_sim_data(params);

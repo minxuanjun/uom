@@ -9,8 +9,10 @@ gyroscope_noise_density:     0.007000000216066837   # Noise density (continuous-
 gyroscope_random_walk:       0.0019474000437185168  # Bias random walk
 
 rostopic:                    /zed2_node/imu/data    # the IMU ROS topic
-update_rate:                 400.0                  # Hz (for discretization of the values above)
+update_rate:                 400                    # Hz (for discretization of the values above)
 
-initial_acc_bias:            0
-initial_omg_bias:            0
+linearized_ba:               [0, 0, 0]
+linearized_bg:               [0, 0, 0]
 n_gravity:                   [0, 0, -9.81]
+
+integration_cov:             0.0001

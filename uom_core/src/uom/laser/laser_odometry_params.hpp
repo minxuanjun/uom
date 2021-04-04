@@ -8,7 +8,7 @@ struct LaserOdometryParams : ParamsBase
 
     std::size_t windows_size = 11;
     std::size_t max_num_iter = 15;
-    std::size_t scan_match_cnt = 1;
+    std::size_t scan_match_cnt = 3;
 
     float ds_surf_size = 0.05;
     float ds_surf_map_size = 0.1;

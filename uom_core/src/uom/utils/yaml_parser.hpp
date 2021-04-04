@@ -204,24 +204,24 @@ public:
     }
 
     template <typename T>
-    void get_param(const std::string& id, T& output) const
+    void get_param(const std::string& id, T& output, bool optional = false) const
     {
         CHECK(!id.empty());
 
-        try
+
+        if (YAML::Node parameter = node_[id])
         {
-            output = node_[id].as<T>();
+            output = parameter.as<T>();
         }
-        catch (const YAML::Exception& e)
+        else
         {
-            LOG(FATAL) << "Error when read `" << id << "`, Reason: " << e.what();
-            std::exit(-1);
+            LOG(FATAL) << "Error when read `" << id << "`, Reason: " << id << " is not found.";
         }
     }
 
 
     template <typename T>
-    void get_nested_param(const std::string& id, const std::string& name, T& output) const
+    void get_nested_param(const std::string& id, const std::string& name, T& output, bool optional = false) const
     {
         CHECK(!id.empty());
 

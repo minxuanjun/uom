@@ -14,6 +14,7 @@ static constexpr double s_to_ns  = 1e9;   // Second to nanosecond conversion
 using Eigen::Vector2f;
 using Eigen::Vector3f;
 using Eigen::Vector4f;
+using Eigen::Quaternionf;
 
 using Eigen::Vector2d;
 using Eigen::Vector3d;

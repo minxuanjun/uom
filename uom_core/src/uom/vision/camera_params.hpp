@@ -28,7 +28,7 @@ DistortionModel string_to_distortion_model(const std::string& distortion_model);
 struct CameraParams : ParamsBase
 {
     std::string camera_name = "cam0";      // When we read param from `camchain` file of kalibr, we need a name
-    std::string rostopic = "/image_raw";   // Should be useful in reading bag file
+    std::string cam_rostopic = "/image_raw";   // Should be useful in reading bag file
     std::string camera_model = "pinhole";  // Always pinhole in current system
 
     /// The transformation which takes a vector frame cam_i to the IMU frame.
@@ -151,7 +151,7 @@ private:
         yaml_parser.get_nested_param(camera_name, "timeshift_cam_imu", timeshift_cam_imu);
 
         /// Camera rostopic
-        yaml_parser.get_nested_param(camera_name, "rostopic", rostopic);
+        yaml_parser.get_nested_param(camera_name, "rostopic", cam_rostopic);
 
         /// Camera pose wrt body
         // In kalibr file, they use `T_cam_imu`, which is body pose wrt camera

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ros/ros.h>
+
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
@@ -45,7 +47,8 @@ public:
 protected:
 
 
-    bool initialization_process(const ImuDataVector& imu_data_vector);
+    bool initialization_process(const PointCloud::Ptr& cloud_surf,
+                                const ImuDataVector& imu_data_vector);
 
 
     void nominal_process(const PointCloud::Ptr& cloud_full,
@@ -60,10 +63,7 @@ protected:
     void downsample_cloud();
 
 
-    void init_pose_guess();
-
-
-    void update_relative();
+    void init_pose_guess(const ImuDataVector& imu_vector);
 
 
     void update_transformation();
@@ -91,21 +91,13 @@ protected:
     LaserParams laser_params_;
     LaserOdometryParams odometry_params_;
 
-    ///  pose representation: [quaternion: w, x, y, z | transition: x, y, z]
-    double abs_pose_[7];   //absolute pose from current frame to the first frame
+    /// Current state, under un-thread-safe
+    Quaterniond q_prev_ = Quaterniond::Identity() , q_curr_ = Quaterniond::Identity();
+    Vector3d t_prev_= Vector3d::Zero(), t_curr_ = Vector3d::Zero();
 
     //relative pose between two frames
-    Quaterniond quaternion_r;
-    Vector3d transition_r;
-
-    bool kf = true;
-    int kf_num = 0;
-
-    Vector3d trans_last_kf_ = Vector3d::Zero();
-    Quaterniond quat_last_kf_ = Quaterniond::Identity();
-
-    std::size_t latest_frame_idx_ = 0;
-    std::vector<State> state_cloud_frame_;
+    Quaterniond q_delta_ = Quaterniond::Identity();
+    Vector3d t_delta_ = Vector3d::Zero();
 
     /// IMU relative
     StaticInitializer inertial_initializer_;
@@ -117,8 +109,8 @@ protected:
     PointCloud::Ptr surf_from_map_;
     PointCloud::Ptr surf_from_map_ds_;
 
-    std::vector<PointCloud::Ptr> surf_frames_;
-    std::deque<PointCloud::Ptr> recent_surf_frames_;
+    std::vector<PointCloud::Ptr> surf_frames_;       // all cached raw cloud feature
+    std::deque<PointCloud::Ptr> recent_surf_frames_; // cloud feature in odom frame
 
     pcl::VoxelGrid<PointType> down_size_filter_surf_;
     pcl::VoxelGrid<PointType> down_size_filter_surf_map_;
@@ -128,7 +120,6 @@ protected:
     /// optimization
     std::vector<Vector3d> surf_current_pts_;
     std::vector<Vector4d> surf_plane_coeff_; // [unit_norm, 1/norm]
-
 };
 
 
