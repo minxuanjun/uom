@@ -36,7 +36,9 @@ inline T vector_angle(const Eigen::Matrix<T, 3, 1>& vec_a, const Eigen::Matrix<T
 /// Compute eigenvalues and eigenvectors for a series of points
 template <typename T, int DIM>
 inline void solve_eigen(const std::vector<Eigen::Matrix<T, DIM, 1>>& pts,
-                        Eigen::Matrix<T, 1, DIM>& eigen_value, Eigen::Matrix<T, DIM, DIM>& eigen_vector)
+                        Eigen::Matrix<T, 1, DIM>* out_eigen_value,
+                        Eigen::Matrix<T, DIM, DIM>* out_eigen_vector,
+                        Eigen::Matrix<T, DIM, 1>* out_center = nullptr)
 {
 
     using PointType = Eigen::Matrix<T, DIM, 1>;
@@ -58,8 +60,9 @@ inline void solve_eigen(const std::vector<Eigen::Matrix<T, DIM, 1>>& pts,
 
     // compute eigenvalue and eigen vector
     Eigen::SelfAdjointEigenSolver<MatType> esolver(cov_mat);
-    eigen_value = esolver.eigenvalues().real();
-    eigen_vector = esolver.eigenvectors().real();
+    if (out_eigen_value) *out_eigen_value = esolver.eigenvalues().real();
+    if (out_eigen_vector) *out_eigen_vector = esolver.eigenvectors().real();
+    if (out_center) *out_center = std::move(center);
 }
 
 

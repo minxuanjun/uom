@@ -13,6 +13,10 @@ struct LaserOdometryParams : ParamsBase
     float ds_surf_size = 0.05;
     float ds_surf_map_size = 0.1;
 
+    float ds_edge_size = 0.05;
+    float ds_edge_map_size = 0.1;
+
+
     void parse_yaml(const std::string& file_path) override
     {
         YamlParser parser(file_path);
@@ -22,6 +26,8 @@ struct LaserOdometryParams : ParamsBase
         parser.get_param("scan_match_cnt", scan_match_cnt);
         parser.get_param("ds_surf_size", ds_surf_size);
         parser.get_param("ds_surf_map_size", ds_surf_map_size);
+        parser.get_param("ds_edge_size", ds_edge_size);
+        parser.get_param("ds_edge_map_size", ds_edge_map_size);
     }
 
 
@@ -36,6 +42,8 @@ struct LaserOdometryParams : ParamsBase
                 // output
                 out,
                 // input
+                "ds_edge_size", ds_edge_size,
+                "ds_edge_map_size", ds_edge_map_size,
                 "ds_surf_size", ds_surf_size,
                 "ds_surf_map_size", ds_surf_map_size,
                 "max_num_iter", max_num_iter,

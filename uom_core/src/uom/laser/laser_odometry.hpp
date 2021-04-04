@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ros/ros.h>
+#include <ceres/ceres.h>
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -47,7 +47,8 @@ public:
 protected:
 
 
-    bool initialization_process(const PointCloud::Ptr& cloud_surf,
+    bool initialization_process(const PointCloud::Ptr& cloud_edge,
+                                const PointCloud::Ptr& cloud_surf,
                                 const ImuDataVector& imu_data_vector);
 
 
@@ -69,7 +70,10 @@ protected:
     void update_transformation();
 
 
-    std::size_t find_corresponding();
+    std::size_t find_surf_corresponding(ceres::Problem& problem);
+
+
+    std::size_t find_edge_corresponding(ceres::Problem& problem);
 
 
     PointCloud::Ptr transform_cloud(const PointCloud::Ptr& cloud_L, const State& x);
@@ -117,9 +121,21 @@ protected:
 
     pcl::KdTreeFLANN<PointType>::Ptr kd_tree_surf_last_;
 
-    /// optimization
-    std::vector<Vector3d> surf_current_pts_;
-    std::vector<Vector4d> surf_plane_coeff_; // [unit_norm, 1/norm]
+
+    PointCloud::Ptr edge_last_;
+    PointCloud::Ptr edge_last_ds_;
+
+    PointCloud::Ptr edge_from_map_;
+    PointCloud::Ptr edge_from_map_ds_;
+
+    std::vector<PointCloud::Ptr> edge_frames_;       // all cached raw cloud feature
+    std::deque<PointCloud::Ptr> recent_edge_frames_; // cloud feature in odom frame
+
+    pcl::VoxelGrid<PointType> down_size_filter_edge_;
+    pcl::VoxelGrid<PointType> down_size_filter_edge_map_;
+
+    pcl::KdTreeFLANN<PointType>::Ptr kd_tree_edge_last_;
+
 };
 
 

@@ -197,7 +197,7 @@ int main(int argc, char** argv)
         }
 
         /// Compute odometry
-        odometry.process(nullptr, nullptr, surf, imu_data_vector);
+        odometry.process(full, corn, surf, imu_data_vector);
 
         if (auto local_map = odometry.get_local_map())
         {

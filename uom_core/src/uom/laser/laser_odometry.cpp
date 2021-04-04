@@ -1,11 +1,13 @@
 #include "uom/laser/laser_odometry.hpp"
 #include "uom/optimize/laser_factor.hpp"
 #include "uom/imu/imu_tools.hpp"
+#include "uom/utils/math_utils.hpp"
 
 #include <fstream>
 #include <pcl/io/pcd_io.h>
 #include <pcl/common/transforms.h>
 #include <visualization_msgs/MarkerArray.h>
+
 
 LaserOdometry::LaserOdometry(
     const LaserOdometryParams& odometry_params,
@@ -16,27 +18,37 @@ LaserOdometry::LaserOdometry(
     inertial_initializer_(static_initializer_params)
 {
     kd_tree_surf_last_.reset(new pcl::KdTreeFLANN<PointType>());
+    kd_tree_edge_last_.reset(new pcl::KdTreeFLANN<PointType>());
 
     surf_last_.reset(new PointCloud);
     surf_last_ds_.reset(new PointCloud);
 
+    edge_last_.reset(new PointCloud);
+    edge_last_ds_.reset(new PointCloud);
+
     surf_from_map_.reset(new PointCloud);
     surf_from_map_ds_.reset(new PointCloud);
+
+    edge_from_map_.reset(new PointCloud);
+    edge_from_map_ds_.reset(new PointCloud);
 
     // VoxelGrid filter
     down_size_filter_surf_.setLeafSize(Vector4f::Constant(odometry_params.ds_surf_size));
     down_size_filter_surf_map_.setLeafSize(Vector4f::Constant(odometry_params.ds_surf_map_size));
+
+    down_size_filter_edge_.setLeafSize(Vector4f::Constant(odometry_params.ds_edge_size));
+    down_size_filter_edge_map_.setLeafSize(Vector4f::Constant(odometry_params.ds_edge_map_size));
 }
 
 
-void LaserOdometry::process(const PointCloud::Ptr& cloud_full, const PointCloud::Ptr& cloud_corn,
+void LaserOdometry::process(const PointCloud::Ptr& cloud_full, const PointCloud::Ptr& cloud_edge,
                             const PointCloud::Ptr& cloud_surf, const ImuDataVector& imu_data_vector)
 {
     switch (frontend_state_)
     {
         case FrontendState::BOOTSTRAP:
         {
-            if (initialization_process(cloud_surf, imu_data_vector))
+            if (initialization_process(cloud_edge, cloud_surf, imu_data_vector))
             {
                 frontend_state_ = FrontendState::NOMINAL;
             }
@@ -44,16 +56,27 @@ void LaserOdometry::process(const PointCloud::Ptr& cloud_full, const PointCloud:
         }
         case FrontendState::NOMINAL:
         {
-            nominal_process(cloud_full, cloud_corn, cloud_surf, imu_data_vector);
+            nominal_process(cloud_full, cloud_edge, cloud_surf, imu_data_vector);
             break;
         }
     }
 }
 
 
-bool LaserOdometry::initialization_process(const PointCloud::Ptr& cloud_surf, const ImuDataVector& imu_data_vector)
+bool LaserOdometry::initialization_process(
+    const PointCloud::Ptr& cloud_edge, const PointCloud::Ptr& cloud_surf, const ImuDataVector& imu_data_vector)
 {
     inertial_initializer_.add_measurement(imu_data_vector);
+
+    /// We assume that the vehicle is static until inertial device was initialized.
+
+    // update cloud feature array
+    surf_frames_.emplace_back(cloud_surf);
+    edge_frames_.emplace_back(cloud_edge);
+
+    State temp{.p = t_curr_, .q = q_curr_};
+    recent_surf_frames_.emplace_back(transform_cloud(cloud_surf, temp));
+    recent_edge_frames_.emplace_back(transform_cloud(cloud_edge, temp));
 
     State init_state;
     if (inertial_initializer_.initialize(init_state))
@@ -74,12 +97,7 @@ bool LaserOdometry::initialization_process(const PointCloud::Ptr& cloud_surf, co
         q_prev_ = q_curr_;
         t_prev_ = t_curr_;
 
-        // update cloud feature array
-        surf_frames_.clear();
-        surf_frames_.emplace_back(cloud_surf);
-
-        State temp {.p = t_curr_, .q = q_curr_};
-        recent_surf_frames_.emplace_back(transform_cloud(cloud_surf, temp));
+        // Transform recent_surf_frames_ and recent_edge_frames_ to correct frame
 
         // true indicates that inertial system was initialized successfully.
         return true;
@@ -92,13 +110,19 @@ bool LaserOdometry::initialization_process(const PointCloud::Ptr& cloud_surf, co
 
 void LaserOdometry::build_local_map()
 {
-    surf_from_map_->clear();
+    CHECK_EQ(recent_surf_frames_.size(), recent_edge_frames_.size());
 
-    for (auto& frame : recent_surf_frames_)
+    surf_from_map_->clear();
+    edge_from_map_->clear();
+
+    for (std::size_t i = 0; i < recent_surf_frames_.size(); ++i)
     {
-        *surf_from_map_ += *frame;
+        *surf_from_map_ += *(recent_surf_frames_[i]);
+        *edge_from_map_ += *(recent_edge_frames_[i]);
     }
+
     surf_from_map_->header = recent_surf_frames_.back()->header;
+    edge_from_map_->header = recent_edge_frames_.back()->header;
 }
 
 
@@ -106,14 +130,21 @@ void LaserOdometry::downsample_cloud()
 {
     down_size_filter_surf_map_.setInputCloud(surf_from_map_);
     down_size_filter_surf_map_.filter(*surf_from_map_ds_);
+    down_size_filter_edge_map_.setInputCloud(edge_from_map_);
+    down_size_filter_edge_map_.filter(*edge_from_map_ds_);
 
     surf_last_ds_->clear();
+    edge_last_ds_->clear();
 
     down_size_filter_surf_.setInputCloud(surf_last_);
     down_size_filter_surf_.filter(*surf_last_ds_);
+    down_size_filter_edge_.setInputCloud(edge_last_);
+    down_size_filter_edge_.filter(*edge_last_ds_);
 
     surf_from_map_ds_->header = surf_from_map_->header;
     surf_last_ds_->header = surf_last_->header;
+    edge_from_map_ds_->header = edge_from_map_->header;
+    edge_last_ds_->header = edge_last_->header;
 }
 
 
@@ -127,6 +158,7 @@ void LaserOdometry::update_transformation()
     }
 
     kd_tree_surf_last_->setInputCloud(surf_from_map_ds_);
+    kd_tree_edge_last_->setInputCloud(edge_from_map_ds_);
 
     int match_cnt = odometry_params_.scan_match_cnt;
     if (surf_frames_.size() < 2)
@@ -136,19 +168,13 @@ void LaserOdometry::update_transformation()
 
     for (int iter_cnt = 0; iter_cnt < match_cnt; iter_cnt++)
     {
-        ceres::LossFunction* loss_function = new ceres::HuberLoss(0.1);
         ceres::LocalParameterization* eigen_quat_parameterization = new ceres::EigenQuaternionParameterization();
         ceres::Problem problem;
         problem.AddParameterBlock(q_curr_.coeffs().data(), 4, eigen_quat_parameterization);
         problem.AddParameterBlock(t_curr_.data(), 3);
 
-        auto surf_res_cnt = find_corresponding();
-
-        for (std::size_t i = 0; i < surf_res_cnt; ++i)
-        {
-            ceres::CostFunction* costFunction = PointToPlaneFactor::create(surf_current_pts_[i], surf_plane_coeff_[i]);
-            problem.AddResidualBlock(costFunction, loss_function, q_curr_.coeffs().data(), t_curr_.data());
-        }
+        auto surf_res_cnt = find_surf_corresponding(problem);
+        auto edge_res_cnt = find_edge_corresponding(problem);
 
         ceres::Solver::Options solverOptions;
         solverOptions.linear_solver_type = ceres::DENSE_QR;
@@ -171,12 +197,18 @@ void LaserOdometry::update_transformation()
     pcl::copyPointCloud(*surf_last_ds_, *surf_data_copy);
     surf_frames_.emplace_back(surf_data_copy);
 
+    PointCloud::Ptr edge_data_copy(new PointCloud);
+    pcl::copyPointCloud(*edge_last_ds_, *edge_data_copy);
+    edge_frames_.emplace_back(edge_data_copy);
+
     // Update local map window
-    State temp {.p = t_curr_, .q = q_curr_};
+    State temp{.p = t_curr_, .q = q_curr_};
     recent_surf_frames_.emplace_back(transform_cloud(surf_frames_.back(), temp));
+    recent_edge_frames_.emplace_back(transform_cloud(edge_frames_.back(), temp));
     if (recent_surf_frames_.size() > odometry_params_.windows_size)
     {
         recent_surf_frames_.pop_front();
+        recent_edge_frames_.pop_front();
     }
 }
 
@@ -189,7 +221,7 @@ void LaserOdometry::init_pose_guess(const ImuDataVector& imu_data_vec)
     // Use IMU rotation part
     Matrix3d R_BL = laser_params_.T_imu_laser.topLeftCorner<3, 3>();
     Quaterniond q_b0_b1 = compute_rotation_from_imu_vector(imu_data_vec);
-    q_delta_ = Quaterniond { R_BL.transpose() * q_b0_b1.matrix() * R_BL };
+    q_delta_ = Quaterniond{R_BL.transpose() * q_b0_b1.matrix() * R_BL};
 
     // predict
     t_curr_ = q_curr_ * t_delta_ + t_curr_;
@@ -197,15 +229,69 @@ void LaserOdometry::init_pose_guess(const ImuDataVector& imu_data_vec)
 }
 
 
-std::size_t LaserOdometry::find_corresponding()
+std::size_t LaserOdometry::find_edge_corresponding(ceres::Problem& problem)
+{
+    constexpr int search_n = 6;
+    const std::size_t pts_size = edge_last_ds_->points.size();
+
+    std::size_t residual_cnt = 0;
+
+    ceres::LossFunction* loss_function = new ceres::HuberLoss(4.0);
+
+    for (std::size_t i = 0; i < pts_size; ++i)
+    {
+        Vector3d curr_pt = edge_last_ds_->points[i].getVector3fMap().cast<double>();
+
+        PointType point_sel;
+        point_sel.getVector3fMap() = (q_curr_ * curr_pt + t_curr_).cast<float>();
+
+        std::vector<int> point_search_idx;
+        std::vector<float> point_search_dists;
+        kd_tree_edge_last_->nearestKSearch(point_sel, search_n, point_search_idx, point_search_dists);
+
+        // Not too much far away with searched points.
+        if (point_search_dists.back() < 1.0)
+        {
+            std::vector<Vector3d> near_corners;
+
+            Eigen::Matrix<double, 3, 1> center;
+            Eigen::Matrix<double, 1, 3> lambda;
+            Eigen::Matrix<double, 3, 3> vectors;
+
+            for (auto& idx : point_search_idx)
+            {
+                near_corners.emplace_back(edge_from_map_ds_->points[idx].getVector3fMap().cast<double>());
+            }
+
+            solve_eigen(near_corners, &lambda, &vectors, &center);
+
+            // If this is a valid line
+            if (lambda[2] > 4 * lambda[1])
+            {
+                ++residual_cnt;
+
+                Vector6d line_coeffs;
+                line_coeffs << vectors.col(2), center;
+
+                ceres::CostFunction* cost_function = PointToEdgeFactor::create(curr_pt, line_coeffs);
+                problem.AddResidualBlock(cost_function, loss_function, q_curr_.coeffs().data(), t_curr_.data());
+            }
+        }
+    }
+
+    return residual_cnt;
+}
+
+
+std::size_t LaserOdometry::find_surf_corresponding(ceres::Problem& problem)
 {
     constexpr int search_n = 6;
     const std::size_t pts_size = surf_last_ds_->points.size();
 
-    surf_plane_coeff_.clear();
-    surf_current_pts_.clear();
-    surf_plane_coeff_.reserve(pts_size);
-    surf_current_pts_.reserve(pts_size);
+    // Count how many residual items were added to problem
+    std::size_t residual_cnt = 0;
+
+    ceres::LossFunction* loss_function = new ceres::HuberLoss(2.0);
 
     for (std::size_t i = 0; i < pts_size; ++i)
     {
@@ -236,10 +322,10 @@ std::size_t LaserOdometry::find_corresponding()
             norm.normalize(); // get the unit norm
 
             // Compute the centroid of the plane
-             Vector3d center;
-             center.x() = matA0.col(0).sum() / search_n;
-             center.y() = matA0.col(1).sum() / search_n;
-             center.z() = matA0.col(2).sum() / search_n;
+            Vector3d center;
+            center.x() = matA0.col(0).sum() / search_n;
+            center.y() = matA0.col(1).sum() / search_n;
+            center.z() = matA0.col(2).sum() / search_n;
 
             // Make sure that the plan is fit
             bool plane_valid = true;
@@ -259,30 +345,33 @@ std::size_t LaserOdometry::find_corresponding()
             if (plane_valid)
             {
                 double pd = norm.dot(curr_pt) + coeff_d;
-                double weight = 1.0 - 0.9 * std::abs(pd) / std::sqrt(curr_pt.norm());
 
-                if (weight > 0.4)
-                {
-                    surf_current_pts_.emplace_back(curr_pt);
+                // If we have kernal function, is it necessary?
+                // double weight = 1.0 - 0.9 * std::abs(pd) / std::sqrt(curr_pt.norm());
+                // if (weight > 0.4) {}
 
-                    Vector4d plane_coeffs;
-                    plane_coeffs << weight * norm, weight * coeff_d;
-                    surf_plane_coeff_.emplace_back(std::move(plane_coeffs));
-                }
+                ++residual_cnt;
+
+                Vector4d plane_coeffs;
+                plane_coeffs << norm, coeff_d;
+
+                ceres::CostFunction* cost_function = PointToPlaneFactor::create(curr_pt, plane_coeffs);
+                problem.AddResidualBlock(cost_function, loss_function, q_curr_.coeffs().data(), t_curr_.data());
             }
         }
     }
 
-    return surf_current_pts_.size();
+    return residual_cnt;
 }
 
 
 void LaserOdometry::nominal_process(const PointCloud::Ptr& cloud_full,
-                                    const PointCloud::Ptr& cloud_corn,
+                                    const PointCloud::Ptr& cloud_edge,
                                     const PointCloud::Ptr& cloud_surf,
                                     const ImuDataVector& imu_data_vector)
 {
     surf_last_ = cloud_surf;
+    edge_last_ = cloud_edge;
 
     // Construct local cloud map from recent cloud feature.
     build_local_map();
@@ -342,10 +431,20 @@ void LaserOdometry::clear_cloud()
     surf_from_map_->clear();
     surf_from_map_ds_->clear();
 
+    edge_last_->clear();
+    edge_last_ds_->clear();
+    edge_from_map_->clear();
+    edge_from_map_ds_->clear();
+
     // for save memory
     if (surf_frames_.size() > 7)
     {
         surf_frames_[surf_frames_.size() - 8]->clear();
+    }
+
+    if (edge_frames_.size() > 7)
+    {
+        edge_frames_[edge_frames_.size() - 8]->clear();
     }
 }
 

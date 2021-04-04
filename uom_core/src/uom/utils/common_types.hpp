@@ -20,6 +20,7 @@ using Eigen::Vector2d;
 using Eigen::Vector3d;
 using Eigen::Vector4d;
 using Eigen::Quaterniond;
+using Vector6d = Eigen::Matrix<double, 6, 1>;
 
 using Eigen::Matrix2d;
 using Eigen::Matrix3d;
