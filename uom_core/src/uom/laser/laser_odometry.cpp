@@ -1,12 +1,14 @@
 #include "uom/laser/laser_odometry.hpp"
-#include "uom/optimize/laser_factor.hpp"
 #include "uom/imu/imu_tools.hpp"
 #include "uom/utils/math_utils.hpp"
+
+#include "uom/optimize/parameterization.hpp"
+#include "uom/optimize/point_to_edge_factor.hpp"
+#include "uom/optimize/point_to_plane_factor.hpp"
 
 #include <fstream>
 #include <pcl/io/pcd_io.h>
 #include <pcl/common/transforms.h>
-#include <visualization_msgs/MarkerArray.h>
 
 
 LaserOdometry::LaserOdometry(
@@ -69,14 +71,8 @@ bool LaserOdometry::initialization_process(
     inertial_initializer_.add_measurement(imu_data_vector);
 
     /// We assume that the vehicle is static until inertial device was initialized.
-
-    // update cloud feature array
     surf_frames_.emplace_back(cloud_surf);
     edge_frames_.emplace_back(cloud_edge);
-
-    State temp{.p = t_curr_, .q = q_curr_};
-    recent_surf_frames_.emplace_back(transform_cloud(cloud_surf, temp));
-    recent_edge_frames_.emplace_back(transform_cloud(cloud_edge, temp));
 
     State init_state;
     if (inertial_initializer_.initialize(init_state))
@@ -86,18 +82,19 @@ bool LaserOdometry::initialization_process(
                      << init_state.bg.transpose() << "\n\tquat=" << init_state.q.coeffs().transpose();
 
         // Most recent state will be stored in abs_pose_
-        // Matrix4d T_WL = init_state.transformation() * laser_params_.T_imu_laser;
-        // q_curr_ = Quaterniond(T_WL.topLeftCorner<3, 3>());
-        // t_curr_ = T_WL.block<3, 1>(0, 3);
+        Matrix4d T_WL = init_state.transformation() * laser_params_.T_imu_laser;
+        state_curr_.setQuaternion(Quaterniond(T_WL.topLeftCorner<3, 3>()).normalized());
+        state_curr_.translation() = T_WL.block<3, 1>(0, 3);
 
-        // update state array
-        q_curr_.setIdentity();
-        t_curr_.setZero();
-
-        q_prev_ = q_curr_;
-        t_prev_ = t_curr_;
+        state_prev_ = state_curr_;
 
         // Transform recent_surf_frames_ and recent_edge_frames_ to correct frame
+        const std::size_t buff_size = surf_frames_.size();
+        for (std::size_t i = 0; i < buff_size; ++i)
+        {
+            recent_surf_frames_.emplace_back(transform_cloud(cloud_surf, state_curr_.matrix()));
+            recent_edge_frames_.emplace_back(transform_cloud(cloud_edge, state_curr_.matrix()));
+        }
 
         // true indicates that inertial system was initialized successfully.
         return true;
@@ -168,10 +165,8 @@ void LaserOdometry::update_transformation()
 
     for (int iter_cnt = 0; iter_cnt < match_cnt; iter_cnt++)
     {
-        ceres::LocalParameterization* eigen_quat_parameterization = new ceres::EigenQuaternionParameterization();
         ceres::Problem problem;
-        problem.AddParameterBlock(q_curr_.coeffs().data(), 4, eigen_quat_parameterization);
-        problem.AddParameterBlock(t_curr_.data(), 3);
+        problem.AddParameterBlock(state_curr_.data(), SE3d::num_parameters, new LieLocalParameterization<SE3d>);
 
         auto surf_res_cnt = find_surf_corresponding(problem);
         auto edge_res_cnt = find_edge_corresponding(problem);
@@ -189,8 +184,7 @@ void LaserOdometry::update_transformation()
     }
 
     // update relative transformation delta
-    t_delta_ = q_prev_.inverse() * (t_curr_ - t_prev_);
-    q_delta_ = q_prev_.inverse() * q_curr_;
+    state_delta_ = state_prev_.inverse() * state_curr_;
 
     // Update cloud array
     PointCloud::Ptr surf_data_copy(new PointCloud);
@@ -202,9 +196,8 @@ void LaserOdometry::update_transformation()
     edge_frames_.emplace_back(edge_data_copy);
 
     // Update local map window
-    State temp{.p = t_curr_, .q = q_curr_};
-    recent_surf_frames_.emplace_back(transform_cloud(surf_frames_.back(), temp));
-    recent_edge_frames_.emplace_back(transform_cloud(edge_frames_.back(), temp));
+    recent_surf_frames_.emplace_back(transform_cloud(surf_frames_.back(), state_curr_.matrix()));
+    recent_edge_frames_.emplace_back(transform_cloud(edge_frames_.back(), state_curr_.matrix()));
     if (recent_surf_frames_.size() > odometry_params_.windows_size)
     {
         recent_surf_frames_.pop_front();
@@ -214,18 +207,16 @@ void LaserOdometry::update_transformation()
 
 void LaserOdometry::init_pose_guess(const ImuDataVector& imu_data_vec)
 {
-    // cache previous
-    t_prev_ = t_curr_;
-    q_prev_ = q_curr_;
+    // Cache previous
+    state_prev_ = state_curr_;
 
     // Use IMU rotation part
     Matrix3d R_BL = laser_params_.T_imu_laser.topLeftCorner<3, 3>();
     Quaterniond q_b0_b1 = compute_rotation_from_imu_vector(imu_data_vec);
-    q_delta_ = Quaterniond{R_BL.transpose() * q_b0_b1.matrix() * R_BL};
+    state_delta_.setQuaternion(q_b0_b1);
 
-    // predict
-    t_curr_ = q_curr_ * t_delta_ + t_curr_;
-    q_curr_ = q_curr_ * q_delta_;
+    // Predict
+    state_curr_ = state_prev_ * state_delta_;
 }
 
 
@@ -241,9 +232,10 @@ std::size_t LaserOdometry::find_edge_corresponding(ceres::Problem& problem)
     for (std::size_t i = 0; i < pts_size; ++i)
     {
         Vector3d curr_pt = edge_last_ds_->points[i].getVector3fMap().cast<double>();
+        Vector3d curr_pt_w = state_curr_ * curr_pt;
 
         PointType point_sel;
-        point_sel.getVector3fMap() = (q_curr_ * curr_pt + t_curr_).cast<float>();
+        point_sel.getVector3fMap() = curr_pt_w.cast<float>();
 
         std::vector<int> point_search_idx;
         std::vector<float> point_search_dists;
@@ -273,8 +265,8 @@ std::size_t LaserOdometry::find_edge_corresponding(ceres::Problem& problem)
                 Vector6d line_coeffs;
                 line_coeffs << vectors.col(2), center;
 
-                ceres::CostFunction* cost_function = PointToEdgeFactor::create(curr_pt, line_coeffs);
-                problem.AddResidualBlock(cost_function, loss_function, q_curr_.coeffs().data(), t_curr_.data());
+                ceres::CostFunction* cost_function = PointToEdgeFactorAutoDiff::create(curr_pt, line_coeffs);
+                problem.AddResidualBlock(cost_function, loss_function, state_curr_.data());
             }
         }
     }
@@ -296,9 +288,10 @@ std::size_t LaserOdometry::find_surf_corresponding(ceres::Problem& problem)
     for (std::size_t i = 0; i < pts_size; ++i)
     {
         Vector3d curr_pt = surf_last_ds_->points[i].getVector3fMap().cast<double>();
+        Vector3d curr_pt_w = state_curr_ * curr_pt;
 
         PointType point_sel;
-        point_sel.getVector3fMap() = (q_curr_ * curr_pt + t_curr_).cast<float>();
+        point_sel.getVector3fMap() = curr_pt_w.cast<float>();
 
         std::vector<int> point_search_idx;
         std::vector<float> point_search_dists;
@@ -355,8 +348,8 @@ std::size_t LaserOdometry::find_surf_corresponding(ceres::Problem& problem)
                 Vector4d plane_coeffs;
                 plane_coeffs << norm, coeff_d;
 
-                ceres::CostFunction* cost_function = PointToPlaneFactor::create(curr_pt, plane_coeffs);
-                problem.AddResidualBlock(cost_function, loss_function, q_curr_.coeffs().data(), t_curr_.data());
+                ceres::CostFunction* cost_function = PointToPlaneFactorAutodiff::create(curr_pt, plane_coeffs);
+                problem.AddResidualBlock(cost_function, loss_function, state_curr_.data());
             }
         }
     }
@@ -391,9 +384,8 @@ void LaserOdometry::nominal_process(const PointCloud::Ptr& cloud_full,
 
 void LaserOdometry::get_odom(Quaterniond& q_w_i, Vector3d& t_w_i) const
 {
-    q_w_i = q_curr_.cast<double>();
-    q_w_i.normalize();
-    t_w_i = t_curr_.cast<double>();
+    q_w_i = state_curr_.unit_quaternion();
+    t_w_i = state_curr_.translation();
 }
 
 
@@ -410,14 +402,14 @@ LaserOdometry::PointCloud::Ptr LaserOdometry::get_local_map() const
 }
 
 
-LaserOdometry::PointCloud::Ptr LaserOdometry::transform_cloud(const PointCloud::Ptr& local_cloud, const State& x)
+LaserOdometry::PointCloud::Ptr LaserOdometry::transform_cloud(const PointCloud::Ptr& local_cloud, const Matrix4d& T)
 {
     DCHECK(local_cloud != nullptr);
 
     PointCloud::Ptr ret(new PointCloud);
     pcl::transformPointCloud(*local_cloud,                         // input
                              *ret,                              // output
-                             x.transformation().cast<float>(),     // SE3 pose
+                             T.cast<float>(),     // SE3 pose
                              true);                   // need all field
     ret->header.frame_id = "odom";
     return ret;

@@ -15,6 +15,8 @@
 #include "uom/imu/static_initialization.hpp"
 #include "uom/laser/laser_params.hpp"
 #include "uom/laser/laser_odometry_params.hpp"
+#include "uom/geometry/voxel_filter_larger.hpp"
+
 
 class LaserOdometry
 {
@@ -76,7 +78,7 @@ protected:
     std::size_t find_edge_corresponding(ceres::Problem& problem);
 
 
-    PointCloud::Ptr transform_cloud(const PointCloud::Ptr& cloud_L, const State& x);
+    PointCloud::Ptr transform_cloud(const PointCloud::Ptr& cloud_L, const Matrix4d& T);
 
 
     void clear_cloud();
@@ -96,12 +98,7 @@ protected:
     LaserOdometryParams odometry_params_;
 
     /// Current state, under un-thread-safe
-    Quaterniond q_prev_ = Quaterniond::Identity() , q_curr_ = Quaterniond::Identity();
-    Vector3d t_prev_= Vector3d::Zero(), t_curr_ = Vector3d::Zero();
-
-    //relative pose between two frames
-    Quaterniond q_delta_ = Quaterniond::Identity();
-    Vector3d t_delta_ = Vector3d::Zero();
+    SE3d state_curr_, state_prev_, state_delta_;
 
     /// IMU relative
     StaticInitializer inertial_initializer_;
@@ -116,8 +113,8 @@ protected:
     std::vector<PointCloud::Ptr> surf_frames_;       // all cached raw cloud feature
     std::deque<PointCloud::Ptr> recent_surf_frames_; // cloud feature in odom frame
 
-    pcl::VoxelGrid<PointType> down_size_filter_surf_;
-    pcl::VoxelGrid<PointType> down_size_filter_surf_map_;
+    pcl::VoxelGridLarge<PointType> down_size_filter_surf_;
+    pcl::VoxelGridLarge<PointType> down_size_filter_surf_map_;
 
     pcl::KdTreeFLANN<PointType>::Ptr kd_tree_surf_last_;
 
@@ -131,8 +128,8 @@ protected:
     std::vector<PointCloud::Ptr> edge_frames_;       // all cached raw cloud feature
     std::deque<PointCloud::Ptr> recent_edge_frames_; // cloud feature in odom frame
 
-    pcl::VoxelGrid<PointType> down_size_filter_edge_;
-    pcl::VoxelGrid<PointType> down_size_filter_edge_map_;
+    pcl::VoxelGridLarge<PointType> down_size_filter_edge_;
+    pcl::VoxelGridLarge<PointType> down_size_filter_edge_map_;
 
     pcl::KdTreeFLANN<PointType>::Ptr kd_tree_edge_last_;
 
